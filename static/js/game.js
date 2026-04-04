@@ -141,7 +141,9 @@ async function api(endpoint, body = {}) {
             body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        const data = await res.json();
+        console.log(`[API] ${endpoint} 응답:`, data); // 디버깅 추가
+        return data;
     } catch (err) {
         console.error(`[API Error] ${endpoint}:`, err);
         return null;

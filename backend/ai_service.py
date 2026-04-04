@@ -1,6 +1,6 @@
 """
 루멘드리아 - AI 서비스
-OpenAI GPT-4o-mini를 통한 스토리 생성 및 보스전 연출.
+Google Gemini 2.0 Flash를 통한 스토리 생성 및 보스전 연출.
 수치 계산은 game_logic.py에서 처리하고, 여기서는 연출 텍스트만 생성한다.
 """
 
@@ -9,18 +9,20 @@ from __future__ import annotations
 import json
 import os
 
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-MODEL = "gpt-3.5-turbo"
+# Gemini API 설정
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+MODEL = "gemini-2.5-flash"
 
 
 def _call_ai(system_prompt: str, user_prompt: str) -> dict | None:
-    """OpenAI API 호출 후 JSON 파싱."""
+    """Google Gemini API 호출 후 JSON 파싱."""
+    print(f"[AI] _call_ai 시작 - USE_AI: {os.getenv('USE_AI')}, MODEL: {MODEL}")
+
     # 환경변수로 AI 호출 여부 제어
     use_ai = os.getenv("USE_AI", "true").lower() in ("true", "1", "yes", "on")
     if not use_ai:
@@ -28,26 +30,52 @@ def _call_ai(system_prompt: str, user_prompt: str) -> dict | None:
         return None
 
     try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.8,
-            max_completion_tokens=1024,
-            response_format={"type": "json_object"},
+        print("[AI] Gemini 모델 생성 중...")
+        model = genai.GenerativeModel(MODEL)
+
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        print(f"[AI] 프롬프트 길이: {len(full_prompt)}자")
+        print(f"[AI] 프롬프트 미리보기: {full_prompt[:200]}...")
+
+        print("[AI] API 호출 중...")
+        response = model.generate_content(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.8,
+                max_output_tokens=1024,
+            ),
         )
-        content = response.choices[0].message.content
+
+        print("[AI] API 응답 받음")
+        content = response.text
+        print(f"[AI] 응답 내용 길이: {len(content)}자")
+        print(f"[AI] 응답 내용 미리보기: {content[:300]}...")
+
+        # 마크다운 코드 블록 제거 (```json ... ```)
+        if content.startswith('```') and '```' in content:
+            # 첫 번째 ```json 이후부터 마지막 ``` 전까지 추출
+            start = content.find('```json\n') if '```json\n' in content else content.find('```\n')
+            if start != -1:
+                start += content[start:].find('\n') + 1
+                end = content.rfind('```')
+                if end > start:
+                    content = content[start:end].strip()
+                    print(f"[AI] 코드 블록 제거 후: {content[:200]}...")
+
         # JSON 파싱 시도, 실패하면 None 반환
         try:
-            return json.loads(content)
+            print("[AI] JSON 파싱 시도...")
+            result = json.loads(content)
+            print(f"[AI] JSON 파싱 성공: {type(result)}")
+            return result
         except json.JSONDecodeError as e:
             print(f"[AI] JSON parse error: {e}")
             print(f"[AI] Raw content: {content[:200]}...")
             return None
     except Exception as e:
-        print(f"[AI Error] {e}")
+        print(f"[AI Error] 예외 발생: {type(e).__name__}: {e}")
+        import traceback
+        print(f"[AI Error] 트레이스백:\n{traceback.format_exc()}")
         return None
 
 
@@ -64,7 +92,9 @@ STORY_SYSTEM_PROMPT = """너는 초등학생 여자아이를 위한 서양 판�
 - 감각적 묘사 (빛, 색, 소리, 냄새) 적극 활용
 - 리아나의 감정과 내면을 함께 표현
 
-반드시 아래 형식의 유효한 JSON만 반환하라:
+중요: 반드시 유효한 JSON 형식으로만 응답하라. 다른 텍스트를 추가하지 마라.
+
+필수 JSON 형식:
 {
   "story": "3~5문장의 스토리. 생동감 있게.",
   "choices": ["선택지1 (8자 이내)", "선택지2 (8자 이내)", "선택지3 (8자 이내)"],
@@ -113,6 +143,7 @@ def generate_story(state: dict, choice: str | None = None) -> dict | None:
         return _fallback_story(chapter, location)
 
     # 유효성 검증
+    print(f"[AI] AI 응답 검증 - result: {result}")
     if "story" not in result or "choices" not in result:
         print(f"[AI] Invalid response structure: {result}")
         return _fallback_story(chapter, location)
@@ -122,6 +153,7 @@ def generate_story(state: dict, choice: str | None = None) -> dict | None:
         return _fallback_story(chapter, location)
 
     print(f"[AI] Success: {result['story'][:50]}...")
+    print(f"[AI] 최종 반환: story={bool(result.get('story'))}, choices={len(result.get('choices', []))}개")
     return result
 
 

@@ -252,11 +252,12 @@ def api_next_chapter():
 # ─── 서버 시작 ────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    if not os.getenv("OPENAI_API_KEY"):
-        print("⚠️  OPENAI_API_KEY가 설정되지 않았습니다.")
-        print("   .env 파일에 OPENAI_API_KEY=sk-... 를 추가해주세요.")
+    if not os.getenv("GOOGLE_API_KEY"):
+        print("⚠️  GOOGLE_API_KEY가 설정되지 않았습니다.")
+        print("   .env 파일에 GOOGLE_API_KEY=... 를 추가해주세요.")
+        print("   Google AI Studio에서 API 키를 발급받으세요.")
         sys.exit(1)
 
     print("✨ 루멘드리아 서버를 시작합니다...")
-    print("🌐 http://localhost:5000 에서 게임을 즐겨보세요!")
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    print("🌐 http://localhost:5555 에서 게임을 즐겨보세요!")
+    app.run(host="0.0.0.0", port=5555, debug=True)
