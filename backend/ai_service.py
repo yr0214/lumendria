@@ -16,11 +16,17 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-MODEL = "gpt-4o-mini"
+MODEL = "gpt-3.5-turbo"
 
 
 def _call_ai(system_prompt: str, user_prompt: str) -> dict | None:
     """OpenAI API 호출 후 JSON 파싱."""
+    # 환경변수로 AI 호출 여부 제어
+    use_ai = os.getenv("USE_AI", "true").lower() in ("true", "1", "yes", "on")
+    if not use_ai:
+        print("[AI] AI 호출 비활성화됨 — 폴백 사용")
+        return None
+
     try:
         response = client.chat.completions.create(
             model=MODEL,
@@ -29,11 +35,17 @@ def _call_ai(system_prompt: str, user_prompt: str) -> dict | None:
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.8,
-            max_tokens=1024,
+            max_completion_tokens=1024,
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content
-        return json.loads(content)
+        # JSON 파싱 시도, 실패하면 None 반환
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"[AI] JSON parse error: {e}")
+            print(f"[AI] Raw content: {content[:200]}...")
+            return None
     except Exception as e:
         print(f"[AI Error] {e}")
         return None
@@ -52,7 +64,7 @@ STORY_SYSTEM_PROMPT = """너는 초등학생 여자아이를 위한 서양 판�
 - 감각적 묘사 (빛, 색, 소리, 냄새) 적극 활용
 - 리아나의 감정과 내면을 함께 표현
 
-반드시 아래 형식의 JSON만 반환:
+반드시 아래 형식의 유효한 JSON만 반환하라:
 {
   "story": "3~5문장의 스토리. 생동감 있게.",
   "choices": ["선택지1 (8자 이내)", "선택지2 (8자 이내)", "선택지3 (8자 이내)"],
@@ -146,7 +158,7 @@ BOSS_NARRATION_SYSTEM_PROMPT = """너는 초등학생 여자아이를 위한 판
 전투 결과 데이터를 받아서, 박진감 넘치는 전투 내레이션을 2~3문장으로 만들어줘.
 쉬운 한국어로, 무섭지 않게, 하지만 긴장감 있게!
 
-반드시 아래 형식의 JSON만 반환:
+반드시 아래 형식의 유효한 JSON만 반환하라:
 {
   "narration": "2~3문장의 전투 내레이션"
 }"""

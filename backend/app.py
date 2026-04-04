@@ -26,6 +26,10 @@ from game_logic import (
     add_item_to_player,
     BOSSES,
     ITEMS,
+    TOTAL_CHAPTERS,
+    CHAPTER_LOCATIONS,
+    MAX_HP,
+    MAX_MP,
 )
 from ai_service import (
     generate_story,
@@ -206,6 +210,43 @@ def api_items():
             items_detail.append({"name": name, **ITEMS[name]})
 
     return jsonify({"items": items_detail})
+
+
+@app.post("/api/next-chapter")
+def api_next_chapter():
+    """다음 챕터로 진행."""
+    data = request.get_json()
+    state = data.get("state", {})
+
+    current_chapter = state.get("chapter", 1)
+    if current_chapter >= TOTAL_CHAPTERS:
+        return jsonify({"error": "이미 마지막 챕터입니다"}), 400
+
+    # 챕터 증가
+    state["chapter"] = current_chapter + 1
+    state["location"] = CHAPTER_LOCATIONS.get(state["chapter"], CHAPTER_LOCATIONS[1])
+    state["turn_count"] = 1  # 챕터 시작 시 턴 리셋
+    state["in_boss_battle"] = False
+
+    # 플레이어 회복 (챕터 간 회복)
+    player = state.get("player", {})
+    player["hp"] = MAX_HP
+    player["mp"] = MAX_MP
+    player["shield"] = 0
+    player["attack_boost"] = 0
+
+    # 새로운 스토리 생성
+    story_data = generate_story(state)
+
+    state["last_story"] = story_data["story"]
+
+    return jsonify({
+        "story": story_data["story"],
+        "choices": story_data["choices"],
+        "tendency_deltas": story_data.get("tendency_deltas", [0, 0, 0]),
+        "item_reward": story_data.get("item_reward"),
+        "state": state,
+    })
 
 
 # ─── 서버 시작 ────────────────────────────────────────────────

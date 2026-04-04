@@ -418,10 +418,8 @@ async function nextChapter() {
     dom.overlayBossClear.style.display = "none";
     showBossUI(false);
 
-    const data = await api("/choice", {
-        choice: "다음 챕터로 출발한다",
+    const data = await api("/next-chapter", {
         state: gameState,
-        tendency_delta: 0,
     });
 
     if (!data) return;
