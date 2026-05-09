@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>루멘드리아 — 빛의 수호자</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="./style.css">
+    <script>
+        console.log("[페이지로드] HTML 파일이 로드되었습니다");
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
@@ -35,7 +38,7 @@
     <!-- 게임 화면 -->
     <div id="screen-game" class="screen">
         <!-- 상태바 -->
-        <div class="status-bar">
+        <div class="status-bar" style="display:none">
             <div class="status-left">
                 <div class="status-item hp">
                     <span class="status-label">HP</span>
@@ -168,7 +171,7 @@
             <p class="overlay-text ending-text" id="ending-text"></p>
             <div class="ending-stats">
                 <div class="stat">
-                    <span class="stat-label">성향</span>
+                    <span class="stat-label">엔딩</span>
                     <span class="stat-value" id="ending-route"></span>
                 </div>
             </div>
@@ -184,6 +187,9 @@
         </div>
     </div>
 
-    <script src="/static/js/game.js"></script>
+    <script src="./game.js"></script>
+    <script>
+        init();
+    </script>
 </body>
 </html>

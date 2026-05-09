@@ -1,0 +1,1572 @@
+/* ═══════════════════════════════════════════════════════
+   루멘드리아 — 프론트엔드 게임 엔진
+   상태 관리, API 통신, 타이핑 효과, 파티클, localStorage
+   ═══════════════════════════════════════════════════════ */
+console.log("[게임로드] game.js 파일이 로드되었습니다");
+
+// ─── 상태 ──────────────────────────────────────────────────
+
+let gameState = null;
+let currentChoices = [];
+let tendencyDeltas = [];
+let isTyping = false;
+let isBossBattle = false;
+let actionLocked = false;
+let scenario = null;
+
+const SAVE_KEY = "lumendria_save";
+
+// ─── DOM 캐시 ──────────────────────────────────────────────
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const dom = {
+    screenTitle: $("#screen-title"),
+    screenGame: $("#screen-game"),
+    btnContinue: $("#btn-continue"),
+    barHp: $("#bar-hp"),
+    barMp: $("#bar-mp"),
+    textHp: $("#text-hp"),
+    textMp: $("#text-mp"),
+    chapterBadge: $("#chapter-badge"),
+    routeBadge: $("#route-badge"),
+    itemCount: $("#item-count"),
+    bossStatus: $("#boss-status"),
+    bossName: $("#boss-name"),
+    barBoss: $("#bar-boss"),
+    textBossHp: $("#text-boss-hp"),
+    sceneImage: $("#scene-image"),
+    sceneIcon: $("#scene-icon"),
+    storyText: $("#story-text"),
+    typingIndicator: $("#typing-indicator"),
+    choicesArea: $("#choices-area"),
+    bossActions: $("#boss-actions"),
+    damageDisplay: $("#damage-display"),
+    damagePlayer: $("#damage-player"),
+    damageBoss: $("#damage-boss"),
+    itemPanel: $("#item-panel"),
+    itemList: $("#item-list"),
+    bossItemSelect: $("#boss-item-select"),
+    bossItemList: $("#boss-item-list"),
+    overlayGameover: $("#overlay-gameover"),
+    gameoverText: $("#gameover-text"),
+    overlayBossClear: $("#overlay-boss-clear"),
+    bossClearTitle: $("#boss-clear-title"),
+    bossClearText: $("#boss-clear-text"),
+    btnNextChapter: $("#btn-next-chapter"),
+    overlayEnding: $("#overlay-ending"),
+    endingBadge: $("#ending-badge"),
+    endingText: $("#ending-text"),
+    endingRoute: $("#ending-route"),
+    overlayLoading: $("#overlay-loading"),
+};
+
+// ─── 파티클 시스템 ─────────────────────────────────────────
+
+const canvas = $("#particles");
+const ctx = canvas.getContext("2d");
+let particles = [];
+
+function initParticles() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    particles = [];
+    const count = Math.floor((canvas.width * canvas.height) / 15000);
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 2 + 0.5,
+            speedY: -(Math.random() * 0.3 + 0.1),
+            speedX: (Math.random() - 0.5) * 0.2,
+            opacity: Math.random() * 0.5 + 0.1,
+            pulse: Math.random() * Math.PI * 2,
+        });
+    }
+}
+
+function animateParticles() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const p of particles) {
+        p.y += p.speedY;
+        p.x += p.speedX;
+        p.pulse += 0.02;
+        const opacity = p.opacity * (0.7 + 0.3 * Math.sin(p.pulse));
+
+        if (p.y < -10) {
+            p.y = canvas.height + 10;
+            p.x = Math.random() * canvas.width;
+        }
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(167, 139, 250, ${opacity})`;
+        ctx.fill();
+    }
+    requestAnimationFrame(animateParticles);
+}
+
+window.addEventListener("resize", () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+initParticles();
+animateParticles();
+
+// ─── 초기화 ────────────────────────────────────────────────
+
+function init() {
+    scenario = {
+      "meta": {
+        "title": "아에르돈의 계약",
+        "version": "3.0",
+        "designer_note": "주인공 동기 / 마법사 반전 간접화 / 선택지 트레이드오프 / 죽음 분기 / killedVillager 파급효과 / 엔딩 결 차별화"
+      },
+      "initial_state": {
+        "hasSword": false,
+        "hasRelic": false,
+        "knowsTruth": false,
+        "corrupted": false,
+        "trustWizard": false,
+        "killedVillager": false,
+        "sawSecret": false,
+        "usedRelic": 0,
+        "playerMotive": "unknown"
+      },
+      "start": "start",
+      "nodes": {
+        "start": {
+          "text": "당신의 동생은 3년 전 이 왕국에서 죽었다.\n사인은 '저주병' — 왕국 밖에서는 존재하지도 않는 병명이었다.\n당신은 3년을 기다렸다. 조사했다. 그리고 국경을 넘었다.\n복수인지, 진실인지, 당신 스스로도 아직 모른다.\n아에르돈의 성벽이 보인다. 바람에 재 냄새가 섞여 온다.",
+          "choices": [
+            {
+              "text": "숲을 돌아 성을 우회한다 — 먼저 땅의 상태를 봐야 한다",
+              "next": "forest"
+            },
+            {
+              "text": "마을로 들어간다 — 살아남은 사람들이 가장 많이 안다",
+              "next": "village"
+            },
+            {
+              "text": "성문을 향해 곧장 걷는다 — 돌아서 갈 이유가 없다",
+              "next": "castle_gate_early"
+            }
+          ]
+        },
+        "castle_gate_early": {
+          "text": "성문은 닫혀 있다. 수문장이 창을 겨눈다.\n'민간인 출입 금지. 왕의 명령이다.'\n당신 뒤로 마을 방향에서 연기가 피어오르는 게 보인다.\n무언가 타고 있다.",
+          "choices": [
+            {
+              "text": "마을 쪽 연기를 확인하러 간다 — 순서가 있다",
+              "next": "village"
+            },
+            {
+              "text": "수문장을 설득한다 — 나는 저주를 끊으러 왔다",
+              "next": "gate_talk"
+            },
+            {
+              "text": "숲으로 우회한다 — 다른 길을 찾겠다",
+              "next": "forest"
+            }
+          ]
+        },
+        "gate_talk": {
+          "text": "수문장이 비웃는다.\n'저주를 끊겠다는 자가 한둘이 아니었소. 다들 돌아오지 않았지.'\n그는 잠깐 목소리를 낮춘다.\n'...마법사 탑 쪽에 쪽문이 있소. 내가 못 본 걸로 하겠소.\n대신 — 탑 안에 있는 걸 믿지 마시오.'",
+          "effects": { "knowsTruth": true },
+          "choices": [
+            {
+              "text": "마법사 탑의 쪽문으로 향한다",
+              "effects": { "trustWizard": false },
+              "next": "wizard"
+            },
+            {
+              "text": "수문장의 경고를 새기고 먼저 마을을 조사한다",
+              "next": "village"
+            },
+            {
+              "text": "수문장에게 동생 이야기를 꺼낸다 — 혹시 알지도 모른다",
+              "next": "gate_sibling"
+            }
+          ]
+        },
+        "gate_sibling": {
+          "text": "수문장의 표정이 굳는다.\n'...3년 전? 그 해에 실종된 사람이 한둘이 아니었소.'\n그는 더 말하려다 입을 다문다. 위를 힐끗 본다 — 성루 위 병사들.\n쪽지 하나를 손에 쥐어준다. '숲 동굴. 제단 뒤.'",
+          "effects": { "sawSecret": true },
+          "choices": [
+            {
+              "text": "쪽지를 들고 숲으로 향한다",
+              "next": "forest"
+            },
+            {
+              "text": "쪽지를 무시하고 마을로 간다 — 더 많은 증인이 필요하다",
+              "next": "village"
+            }
+          ]
+        },
+        "forest": {
+          "text": "아에르돈의 숲, 이름은 '회색의 관'.\n한때 요정들이 노래하던 곳이라 했지만, 지금은 새 한 마리 울지 않는다.\n발소리조차 흙에 흡수되는 느낌.\n그리고 — 나무 한 그루에 낡은 천이 묶여 있다. 누군가 표식을 남겼다.",
+          "choices": [
+            {
+              "text": "표식을 따라 동굴로 간다",
+              "next": "cave"
+            },
+            {
+              "text": "표식을 무시하고 숲 심장부로 깊이 들어간다",
+              "next": "deep_forest"
+            },
+            {
+              "text": "숲 가장자리를 돌아 마을로 빠져나간다",
+              "next": "village"
+            }
+          ]
+        },
+        "cave": {
+          "text": "동굴 안. 제단석 위에 검이 꽂혀 있다.\n칼날에 문자: '자격 있는 자만이 이 검의 무게를 안다.'\n그런데 — 제단 옆 바닥에 최근에 누군가 다녀간 흔적이 있다.\n발자국. 작다. 어른이 아니다.",
+          "choices": [
+            {
+              "text": "검을 뽑는다 — 지금 당장 필요한 건 힘이다",
+              "effects": { "hasSword": true },
+              "next": "cave_sword_taken"
+            },
+            {
+              "text": "발자국을 따라간다 — 검보다 단서가 먼저다",
+              "next": "secret_path"
+            },
+            {
+              "text": "제단 주변을 샅샅이 뒤진다 — 놓친 게 있을 것이다",
+              "next": "cave_inspect"
+            }
+          ]
+        },
+        "cave_sword_taken": {
+          "text": "검이 손에 잡히는 순간, 묵직한 울림이 느껴진다.\n그리고 제단 뒤 벽에 균열이 생기며 문자가 드러난다:\n'이 검은 저주를 끊지 못한다. 그러나 진실을 지키는 자의 손에서는 다르다.'\n당신은 그 말의 의미를 아직 모른다.",
+          "choices": [
+            {
+              "text": "문자를 새기고 발자국을 따라간다",
+              "next": "secret_path"
+            },
+            {
+              "text": "검을 들고 숲으로 돌아간다 — 나중에 생각하겠다",
+              "next": "forest"
+            },
+            {
+              "text": "제단 뒤 균열을 더 파본다",
+              "next": "cave_inspect"
+            }
+          ]
+        },
+        "cave_inspect": {
+          "text": "제단 뒤쪽, 바닥에 눌린 흔적들.\n그리고 돌 틈에 끼인 단추 하나 — 왕실 문장이 새겨진 금 단추.\n3년 전 왕실 방문단이 착용했던 것과 같은 양식이다.\n당신의 손이 떨린다.",
+          "effects": { "sawSecret": true },
+          "choices": [
+            {
+              "text": "단추를 챙기고 발자국을 따라간다",
+              "next": "secret_path"
+            },
+            {
+              "text": "단추를 챙기고 검도 뽑는다 — 둘 다 필요하다",
+              "effects": { "hasSword": true },
+              "next": "secret_path"
+            },
+            {
+              "text": "동굴을 나와 마을로 간다 — 이걸 아는 사람이 있을 것이다",
+              "next": "village"
+            }
+          ]
+        },
+        "secret_path": {
+          "text": "발자국이 이어지는 곳 — 제단 뒤 숨겨진 통로.\n안으로 들어가자 쓰러진 기사의 유해가 있다.\n갑옷에 왕실 친위대 문장. 손에 쥔 양피지:\n'마법사가 왕에게 계약서를 읽어줬다. 그러나 번역은 마법사가 했다.\n왕은 자신이 무엇에 서명했는지 몰랐다.'\n그 아래 — 필체가 흔들린 채로: '이 사실을 알게 된 우리는 하나씩 사라졌다.'",
+          "effects": { "sawSecret": true, "knowsTruth": true },
+          "choices": [
+            {
+              "text": "양피지를 챙기고 폐허로 향한다 — 유물을 확인해야 한다",
+              "next": "ruins"
+            },
+            {
+              "text": "양피지를 들고 마을로 간다 — 증인을 찾아야 한다",
+              "next": "village"
+            },
+            {
+              "text": "기사의 검을 가져간다 — 그가 남긴 마지막 유산",
+              "effects": { "hasSword": true },
+              "next": "ruins"
+            }
+          ]
+        },
+        "deep_forest": {
+          "text": "숲 심장부. 나무들이 점점 검어진다.\n그리고 — 거대한 회색 늑대가 앞을 막아선다. 눈이 붉다.\n그런데 이상하다. 늑대의 옆구리에 오래된 화살이 박혀 있다.\n달아나거나, 싸우거나, 그 화살을 먼저 볼 것이냐.",
+          "choices": [
+            {
+              "text": "검을 뽑아 맞선다 — 지금은 관찰할 여유가 없다",
+              "conditions": { "hasSword": true },
+              "next": "wolf_win"
+            },
+            {
+              "text": "화살을 뽑아준다 — 이 녀석은 괴물이 아닐 수도 있다",
+              "next": "wolf_help"
+            },
+            {
+              "text": "유물로 저주를 달랜다",
+              "conditions": { "hasRelic": true },
+              "effects": { "usedRelic": "+1" },
+              "next": "wolf_calm"
+            }
+          ]
+        },
+        "wolf_help": {
+          "text": "화살을 뽑는 순간 늑대가 낮게 으르렁댄다.\n그러나 물지 않는다.\n화살이 빠지자 눈의 붉은빛이 조금 옅어진다.\n늑대는 당신을 한참 바라보다 — 숲 깊은 곳으로 걷기 시작한다.\n따라오라는 것처럼.",
+          "choices": [
+            {
+              "text": "늑대를 따라간다 — 짐승도 이유 없이 인도하지 않는다",
+              "next": "wolf_leads"
+            },
+            {
+              "text": "따라가지 않는다 — 덫일 수도 있다. 폐허로 향한다",
+              "next": "ruins"
+            },
+            {
+              "text": "따라가지 않는다 — 마을로 돌아간다",
+              "next": "village"
+            }
+          ]
+        },
+        "wolf_leads": {
+          "text": "늑대가 이끈 곳은 오래된 돌 제단이었다.\n제단 위에 무언가 놓여 있다 — 왕실 인장이 찍힌 서신.\n'계약의 조건: 매 십 년, 왕국 안에서 기억을 가진 자 하나를 바친다.\n증인: 아에르돈 왕, 계약의 중재자 [이름이 불에 탄 흔적]'\n이름은 알아볼 수 없다. 그러나 서명 아래 작은 글씨: '탑의 마법사가 번역함'",
+          "effects": { "sawSecret": true, "knowsTruth": true },
+          "choices": [
+            {
+              "text": "서신을 챙기고 폐허로 향한다 — 유물이 필요하다",
+              "next": "ruins"
+            },
+            {
+              "text": "서신을 들고 마법사를 찾아간다 — 직접 대면하겠다",
+              "next": "wizard"
+            },
+            {
+              "text": "서신을 챙기고 마을로 간다 — 더 많은 증거가 필요하다",
+              "next": "village"
+            }
+          ]
+        },
+        "wolf_win": {
+          "text": "늑대가 쓰러진다.\n죽는 순간 털이 하얗게 변하며 붉은 빛이 사라진다.\n그리고 — 당신은 본다. 늑대의 목에 낡은 목줄. 왕실 문장.\n이 늑대는 사람이었다. 그 사실이 위에 내려앉는다.",
+          "effects": { "killedVillager": true },
+          "choices": [
+            {
+              "text": "목줄을 챙기고 폐허로 향한다 — 이게 증거가 될 것이다",
+              "next": "ruins"
+            },
+            {
+              "text": "마을로 돌아간다 — 이 사실을 알리는 사람이 있어야 한다",
+              "next": "village"
+            },
+            {
+              "text": "그 자리에 잠시 멈춘다 — 서두를 수 없다",
+              "next": "wolf_grief"
+            }
+          ]
+        },
+        "wolf_grief": {
+          "text": "당신은 늑대 옆에 한참 앉아 있었다.\n동생도 이렇게 혼자였을까.\n분노가 목 끝까지 차오른다.\n그러나 분노는 지금 당신의 적이 아니다.",
+          "choices": [
+            {
+              "text": "폐허로 향한다 — 유물을 손에 넣어야 한다",
+              "next": "ruins"
+            },
+            {
+              "text": "마을로 향한다 — 증인을 찾겠다",
+              "next": "village"
+            }
+          ]
+        },
+        "wolf_calm": {
+          "text": "유물의 빛이 늑대의 붉은 눈을 감싼다.\n녀석은 천천히 고개를 숙이더니 길을 열어준다.\n유물이 손 안에서 뜨거워진다. 두 번째가 될수록 더 뜨거울 것이다.",
+          "choices": [
+            {
+              "text": "폐허로 향한다",
+              "next": "ruins"
+            },
+            {
+              "text": "늑대를 따라 숲 안으로 들어간다",
+              "next": "wolf_leads"
+            },
+            {
+              "text": "마을로 돌아간다",
+              "next": "village"
+            }
+          ]
+        },
+        "ruins": {
+          "text": "무너진 신전 터. 중앙 제단 위에 유물 하나.\n'아에르돈의 심장' — 계약을 맺을 때 중재자가 왕에게 건넨 것.\n가까이 다가가자 유물이 박동한다. 그 리듬이 — 심장박동과 똑같다.\n제단 옆 벽에 누군가 긁어놓은 글자: '가져가지 마라. 그것이 원한다면.'",
+          "choices": [
+            {
+              "text": "경고를 무시하고 유물을 가져간다 — 필요하다",
+              "effects": { "hasRelic": true },
+              "next": "whisper"
+            },
+            {
+              "text": "경고를 새기고 유물을 파괴한다 — 위험한 힘은 없애야 한다",
+              "effects": { "knowsTruth": true },
+              "next": "ruins_destroyed"
+            },
+            {
+              "text": "신전 기록을 먼저 뒤진다 — 유물의 정체를 알고 결정한다",
+              "next": "ruins_lore"
+            }
+          ]
+        },
+        "ruins_lore": {
+          "text": "신전 깊숙한 곳의 석판:\n'심장은 계약의 담보다. 계약이 살아있는 한 심장도 살아있다.\n심장을 세 번 쓰면 계약이 완성되며, 그 사용자가 계약의 새 담보가 된다.'\n그리고 마지막 줄 — 다른 손으로 긁어 쓴 것:\n'중재자는 이 사실을 알고 있다. 왕은 몰랐다.'",
+          "effects": { "knowsTruth": true, "sawSecret": true },
+          "choices": [
+            {
+              "text": "그래도 유물을 가져간다 — 통제할 수 있다",
+              "effects": { "hasRelic": true },
+              "next": "whisper"
+            },
+            {
+              "text": "유물을 파괴한다 — 이 담보가 존재하면 안 된다",
+              "next": "ruins_destroyed"
+            },
+            {
+              "text": "유물을 두고 마법사를 찾아간다 — 중재자가 그자다",
+              "next": "wizard"
+            }
+          ]
+        },
+        "ruins_destroyed": {
+          "text": "유물이 산산조각 나는 순간, 땅이 진동했다.\n파편에서 목소리가 흘러나온다:\n'이제 저주는 왕 혼자 짊어진다. 그리고 점점 빨라질 것이다.'\n시간이 없다. 지금 당장 성으로 가야 한다.",
+          "effects": { "knowsTruth": true },
+          "choices": [
+            {
+              "text": "성으로 직행한다",
+              "next": "castle_gate"
+            },
+            {
+              "text": "마을에 들러 마법사를 찾는다 — 근원을 끊어야 한다",
+              "next": "village"
+            },
+            {
+              "text": "잠깐 숲으로 돌아간다 — 빠진 단서가 있다",
+              "next": "forest"
+            }
+          ]
+        },
+        "whisper": {
+          "text": "유물이 손 안에서 뛰기 시작한다.\n목소리가 스며든다. 달콤하다. 그리고 익숙하다.\n— 동생의 목소리다.\n'언니(오빠). 나야. 여기 있어. 이걸 써. 나를 꺼내줘.'\n당신은 안다. 이게 진짜일 리 없다는 것을.\n그러나 손이 떨린다.",
+          "choices": [
+            {
+              "text": "목소리를 믿고 힘을 받아들인다",
+              "effects": { "corrupted": true, "usedRelic": "+1" },
+              "next": "forest"
+            },
+            {
+              "text": "눈을 감고 거부한다 — 진짜 동생이라면 이런 식으로 말하지 않는다",
+              "next": "whisper_refused"
+            },
+            {
+              "text": "유물에게 묻는다 — 동생은 지금 어디 있냐",
+              "effects": { "usedRelic": "+1" },
+              "next": "whisper_deal"
+            }
+          ]
+        },
+        "whisper_refused": {
+          "text": "유물이 잠시 침묵한다.\n그러다 목소리가 바뀐다 — 이번엔 차갑다.\n'현명하군. 그럼 그냥 가져만 다녀. 쓰지 않으면 아무 일도 없으니까.'\n당신은 유물을 품에 넣었다. 그 말이 어째서 더 무섭다.",
+          "choices": [
+            {
+              "text": "성으로 향한다",
+              "next": "castle_gate"
+            },
+            {
+              "text": "마을로 향한다",
+              "next": "village"
+            },
+            {
+              "text": "폐허 기록을 다시 살핀다 — 방금 뭔가 놓쳤다",
+              "next": "ruins_lore"
+            }
+          ]
+        },
+        "whisper_deal": {
+          "text": "유물이 답한다.\n'네 동생은 계약의 담보가 됐다. 이 유물 안에 있지.\n나를 세 번 쓰면 계약이 완성되고 — 그 때 네가 담보가 된다. 동생은 나온다.'\n침묵.\n이것이 사실인지, 거짓인지, 알 방법이 없다.",
+          "choices": [
+            {
+              "text": "받아들인다 — 동생을 꺼낼 수만 있다면",
+              "effects": { "corrupted": true, "usedRelic": "+1" },
+              "next": "village"
+            },
+            {
+              "text": "거부한다 — 이건 또 다른 계약이다. 같은 실수를 반복하지 않겠다",
+              "next": "village"
+            },
+            {
+              "text": "판단을 미룬다 — 먼저 마법사를 찾겠다",
+              "next": "wizard"
+            }
+          ]
+        },
+        "village": {
+          "text": "마을 광장. 사람들은 눈을 마주치지 않는다.\n벽에는 긁힌 글자들: '왕을 믿지 마라' — 그 옆에 누가 덧붙였다. '마법사도.'\n한 아이가 광장 한가운데 서서 당신을 빤히 본다.\n아이의 눈이 — 동생을 닮았다.",
+          "choices": [
+            {
+              "text": "마법사의 탑으로 향한다",
+              "next": "wizard"
+            },
+            {
+              "text": "광장에서 주민들에게 말을 건다",
+              "next": "villager"
+            },
+            {
+              "text": "벽의 글자를 더 따라간다 — 골목 끝까지",
+              "next": "village_wall"
+            }
+          ]
+        },
+        "village_wall": {
+          "text": "골목 끝. 노인 하나가 웅크리고 있다.\n당신을 보자 속삭인다:\n'3년 전 외지인이 왔었소. 저주병이라 불렀지만 — 그건 병이 아니었소.\n기억을 가진 자를 고르는 거요. 누군가의 부탁으로. 탑의 마법사.'\n노인의 눈이 멀다. 그는 당신을 보지 못한다. 그러나 알고 있다.",
+          "effects": { "knowsTruth": true },
+          "choices": [
+            {
+              "text": "마법사를 찾아간다 — 이제 대면할 준비가 됐다",
+              "next": "wizard"
+            },
+            {
+              "text": "성으로 직행한다 — 왕에게 직접 따진다",
+              "next": "castle_gate"
+            },
+            {
+              "text": "노인에게 동생 이야기를 꺼낸다",
+              "next": "villager_old"
+            }
+          ]
+        },
+        "villager_old": {
+          "text": "노인이 오래 침묵한다.\n'...그 해에 사라진 사람 중에 젊은 외지인이 있었소.\n마법사가 데려갔다고 봤다는 사람이 있었지.\n탑 지하에 뭔가 있소. 들어간 사람이 없어서 모를 뿐.'\n그는 더 이상 말하지 않는다.",
+          "effects": { "sawSecret": true },
+          "choices": [
+            {
+              "text": "마법사 탑으로 당장 달려간다",
+              "next": "wizard"
+            },
+            {
+              "text": "먼저 주민들의 이야기를 더 모은다",
+              "next": "villager"
+            },
+            {
+              "text": "증거를 충분히 모았다. 성으로 간다",
+              "next": "castle_gate"
+            }
+          ]
+        },
+        "villager": {
+          "text": "한 여인이 다가온다. 눈빛이 지쳐 있다.\n'제발 도와주세요. 아이가 사흘째 잠에서 깨지 않아요.\n의원이 말했어요 — 기억을 잃어가고 있다고. 이름도, 얼굴도.'\n당신은 그 말을 듣는 순간 멈춘다.\n기억을 가진 자를 바친다. 아이도 그 대상이다.",
+          "choices": [
+            {
+              "text": "유물로 아이를 깨운다 — 지금 당장 할 수 있는 일을 한다",
+              "conditions": { "hasRelic": true },
+              "effects": { "usedRelic": "+1", "trustWizard": true },
+              "next": "villager_helped"
+            },
+            {
+              "text": "여인에게 진실을 말해준다 — 아이가 왜 이런지",
+              "conditions": { "knowsTruth": true },
+              "effects": { "trustWizard": true },
+              "next": "villager_truth"
+            },
+            {
+              "text": "정보를 캐낸다 — 지금은 감정적으로 움직일 때가 아니다",
+              "next": "villager_info"
+            }
+          ]
+        },
+        "villager_helped": {
+          "text": "유물의 빛이 아이의 이마에 닿자 눈이 떠졌다.\n아이가 엄마를 불렀다.\n여인이 울며 당신의 손을 잡는다.\n마을 사람들이 하나둘 문을 열고 나온다.\n당신은 지금 이 모습이 — 동생이 살았다면 봤을 모습이라는 걸 안다.",
+          "choices": [
+            {
+              "text": "마법사를 찾아간다",
+              "next": "wizard"
+            },
+            {
+              "text": "마을 사람들에게 더 물어본다",
+              "next": "village_wall"
+            },
+            {
+              "text": "성으로 향한다",
+              "next": "castle_gate"
+            }
+          ]
+        },
+        "villager_truth": {
+          "text": "여인의 얼굴이 굳는다.\n'...그럼 마법사가 우리 아이를 고른 거예요?'\n잠시 후, 그녀가 입술을 깨물며 말한다:\n'탑 지하로 들어가는 문이 있어요. 마법사가 매일 밤 내려가는 거 봤어요.\n한 번도 뭔가를 들고 내려간 적이 없는데 — 항상 뭔가를 들고 올라왔어요.'",
+          "effects": { "sawSecret": true },
+          "choices": [
+            {
+              "text": "마법사 탑으로 향한다 — 지하를 확인해야 한다",
+              "next": "wizard"
+            },
+            {
+              "text": "성으로 직행한다 — 왕이 이 사실을 아는지 따진다",
+              "next": "castle_gate"
+            },
+            {
+              "text": "여인에게 아이를 피신시키라고 한다. 그리고 탑으로 간다",
+              "effects": { "trustWizard": false },
+              "next": "wizard"
+            }
+          ]
+        },
+        "villager_info": {
+          "text": "여인은 잠시 망설이다 말한다:\n'마법사가 매일 밤 성으로 들어가는 걸 봤어요. 왕과 단둘이.\n그리고 아침마다 마을에서 한 명씩 기억을 잃었어요.'\n그녀가 당신을 올려다본다. '도대체 왜 오신 거예요?'\n당신은 대답하지 못한다.",
+          "effects": { "knowsTruth": true },
+          "choices": [
+            {
+              "text": "진실을 말한다 — 동생 때문에 왔다",
+              "effects": { "trustWizard": true },
+              "next": "villager_truth"
+            },
+            {
+              "text": "여인을 압박해 더 많은 정보를 뜯어낸다",
+              "effects": { "killedVillager": true },
+              "next": "village"
+            },
+            {
+              "text": "아무 말 없이 탑으로 향한다",
+              "next": "wizard"
+            }
+          ]
+        },
+        "wizard": {
+          "text": "마법사의 탑. 그는 등을 보인 채 창밖을 내다보고 있다.\n'올 줄 알았다.' 먼저 말한다.\n'왕이 저주의 근원이다. 내가 진실을 밝히려다 갇혔지.'\n목소리는 침착하다.\n그러나 당신은 — 이미 너무 많이 알고 있다.",
+          "choices": [
+            {
+              "text": "증거를 내민다 — 당신이 중재자였다",
+              "conditions": { "knowsTruth": true },
+              "next": "wizard_confront"
+            },
+            {
+              "text": "그의 말을 일단 듣는다 — 아직 확신이 없다",
+              "next": "wizard_listen"
+            },
+            {
+              "text": "탑 지하로 내려간다 — 말보다 직접 확인한다",
+              "next": "wizard_basement"
+            }
+          ]
+        },
+        "wizard_listen": {
+          "text": "마법사의 이야기는 매끄럽다.\n왕이 욕심을 부렸고, 자신은 말렸다고.\n그는 지도를 꺼낸다 — 성 안으로 들어가는 비밀 통로.\n'함께 가자. 내가 증언하겠다.'\n그의 눈이 — 당신의 품 안 유물 쪽으로 한 번, 빠르게 움직인다.",
+          "choices": [
+            {
+              "text": "지도를 받고 그와 함께 성으로 간다",
+              "effects": { "trustWizard": true },
+              "next": "castle_inside"
+            },
+            {
+              "text": "지도만 빼앗고 혼자 간다 — 그를 믿지 않는다",
+              "next": "castle_gate"
+            },
+            {
+              "text": "그의 눈짓을 짚어 묻는다 — 유물을 왜 봤냐",
+              "next": "wizard_confront"
+            }
+          ]
+        },
+        "wizard_basement": {
+          "text": "탑 지하.\n유리 관 여러 개가 늘어서 있다.\n그 안에 — 사람들이 있다. 눈을 뜨고 있지만 움직이지 않는다.\n기억을 잃은 채로 보존된 것들.\n그리고 맨 끝 관에 — 당신이 아는 얼굴이 있다.\n동생이다.",
+          "effects": { "sawSecret": true, "knowsTruth": true },
+          "choices": [
+            {
+              "text": "관을 부수려 한다 — 지금 당장 꺼내야 한다",
+              "next": "basement_smash"
+            },
+            {
+              "text": "마법사에게 따진다 — 이게 뭔지 설명하라",
+              "next": "wizard_confront"
+            },
+            {
+              "text": "유물로 동생을 깨우려 한다",
+              "conditions": { "hasRelic": true },
+              "effects": { "usedRelic": "+1", "corrupted": true },
+              "next": "basement_relic"
+            }
+          ]
+        },
+        "basement_smash": {
+          "text": "관이 깨지는 순간 마법사가 나타난다.\n'멈춰. 계약이 풀리기 전에 꺼내면 그 자리에서 소멸한다.'\n그의 표정에 처음으로 당혹감이 스쳤다.\n당신의 손에 유리 파편이 박혔다. 동생은 아직 눈을 뜨지 않았다.",
+          "choices": [
+            {
+              "text": "마법사를 협박한다 — 계약을 풀어라, 아니면 죽는다",
+              "conditions": { "hasSword": true },
+              "next": "wizard_confront"
+            },
+            {
+              "text": "마법사의 말을 따른다 — 계약을 먼저 끊겠다",
+              "effects": { "trustWizard": true },
+              "next": "castle_gate"
+            },
+            {
+              "text": "유물로 계약을 강제로 깬다",
+              "conditions": { "hasRelic": true },
+              "effects": { "usedRelic": "+1", "corrupted": true },
+              "next": "basement_relic"
+            }
+          ]
+        },
+        "basement_relic": {
+          "text": "유물의 빛이 관을 감쌌다.\n동생의 눈꺼풀이 떨렸다.\n그러나 유물이 세 번째로 쓰이는 순간 — 당신의 손이 투명해지기 시작했다.\n계약이 당신을 담보로 인식하기 시작한 것이다.",
+          "effects": { "usedRelic": "+1" },
+          "choices": [
+            {
+              "text": "계속한다 — 동생이 나온다면",
+              "effects": { "corrupted": true },
+              "next": "doom_ending"
+            },
+            {
+              "text": "멈춘다 — 이건 내가 원한 결말이 아니다",
+              "next": "wizard_confront"
+            }
+          ]
+        },
+        "wizard_confront": {
+          "text": "마법사는 당신의 눈을 피하지 않는다.\n긴 침묵.\n'...맞다. 내가 계약서를 번역했다. 내가 조건을 바꿨다.\n왕은 몰랐다.'\n그는 잠시 눈을 감는다.\n'그러나 막을 수 있는 것도 나뿐이다. 나는 계약의 구조를 안다.\n나를 이용할지, 처단할지 — 선택해라.'",
+          "effects": { "knowsTruth": true },
+          "choices": [
+            {
+              "text": "협력한다 — 죄는 나중에 물어도 된다",
+              "effects": { "trustWizard": true },
+              "next": "castle_gate"
+            },
+            {
+              "text": "처단한다 — 도움은 다른 방법으로 찾겠다",
+              "effects": { "killedVillager": true, "trustWizard": false },
+              "next": "wizard_dead"
+            },
+            {
+              "text": "그를 왕 앞에 데려간다 — 직접 해명하게 한다",
+              "effects": { "trustWizard": true },
+              "next": "castle_inside"
+            }
+          ]
+        },
+        "wizard_dead": {
+          "text": "마법사가 쓰러졌다.\n그의 마지막 말: '...왕좌 왼쪽 기둥. 계약서가 있다. 그걸 태워라.'\n당신은 그 말을 새겼다.\n그리고 — 지하 관 속 사람들이 어떻게 되는지는 아직 모른다.",
+          "choices": [
+            {
+              "text": "성으로 향한다 — 계약서를 찾겠다",
+              "next": "castle_gate"
+            },
+            {
+              "text": "지하로 다시 내려간다 — 동생을 확인해야 한다",
+              "next": "wizard_basement"
+            }
+          ]
+        },
+        "castle_gate": {
+          "text": "성문. 두께가 손바닥 두 배는 되는 강철 문.\n위에서 병사들의 발소리.\n달빛 아래, 성은 살아있는 것처럼 느껴진다.\n안에 동생이 있다. 안에 왕이 있다. 안에 계약서가 있다.",
+          "choices": [
+            {
+              "text": "검으로 수문장을 제압하고 돌파한다",
+              "conditions": { "hasSword": true },
+              "next": "castle_inside"
+            },
+            {
+              "text": "맨손으로 강행한다 — 여기서 멈출 수 없다",
+              "conditions": { "hasSword": false },
+              "next": "death_gate"
+            },
+            {
+              "text": "마법사의 비밀 통로를 이용한다",
+              "conditions": { "trustWizard": true },
+              "next": "castle_inside"
+            }
+          ]
+        },
+        "castle_inside": {
+          "text": "성 내부. 벽마다 왕국의 역사.\n첫 번째 왕, 계약, 천 년의 번영.\n그리고 지금 — 저주.\n왕좌의 불빛이 보인다. 그 옆 왼쪽 기둥도.",
+          "choices": [
+            {
+              "text": "왕좌로 곧장 향한다",
+              "next": "throne"
+            },
+            {
+              "text": "왼쪽 기둥을 먼저 확인한다 — 계약서를 찾겠다",
+              "next": "castle_contract"
+            },
+            {
+              "text": "성안을 둘러보며 단서를 더 찾는다",
+              "next": "castle_lore"
+            }
+          ]
+        },
+        "castle_contract": {
+          "text": "기둥 뒤, 석판 안에 양피지 하나.\n계약서.\n조건들이 쓰여 있다. 그리고 번역이 얼마나 교묘하게 바뀌었는지.\n왕의 서명 옆에 — 이 계약서를 태우면 계약이 소멸한다는 조항이 있다.\n마법사가 자신의 탈출구를 만들어둔 것인지, 아니면 진짜 후회였는지.",
+          "effects": { "knowsTruth": true, "sawSecret": true },
+          "choices": [
+            {
+              "text": "계약서를 태운다 — 지금 당장",
+              "next": "contract_burned"
+            },
+            {
+              "text": "왕에게 먼저 보여준다 — 그가 알아야 한다",
+              "next": "throne"
+            },
+            {
+              "text": "계약서를 들고 왕좌로 향한다",
+              "next": "throne"
+            }
+          ]
+        },
+        "contract_burned": {
+          "text": "양피지가 타오르는 순간 성 전체가 흔들렸다.\n저주가 풀리기 시작한다.\n그러나 — 지하의 관들은?\n동생은?",
+          "choices": [
+            {
+              "text": "왕좌로 향한다 — 왕과 마지막 대면이 필요하다",
+              "next": "throne"
+            },
+            {
+              "text": "탑 지하로 달려간다 — 동생이 먼저다",
+              "next": "sibling_free"
+            }
+          ]
+        },
+        "sibling_free": {
+          "text": "계약이 소멸하자 관들이 저절로 열렸다.\n사람들이 하나씩 눈을 떴다.\n당신은 동생 앞에 무릎을 꿇었다.\n동생이 눈을 뜨고 — 당신의 이름을 불렀다.\n그 한 마디에, 3년이 녹았다.",
+          "next": "true_ending_alt"
+        },
+        "castle_lore": {
+          "text": "성벽 기록의 마지막 줄:\n'저주는 계약의 문구 안에 있다. 왕이 스스로 계약을 부정하면 저주는 풀린다.\n그러나 왕이 계약을 부정하려면 — 왕은 모든 것을 내려놓아야 한다.\n왕좌도. 이름도. 목숨도.'\n당신은 잠시 멈춘다.\n왕이 그럴 수 있는 사람인지 — 모른다.",
+          "effects": { "knowsTruth": true },
+          "choices": [
+            {
+              "text": "왕좌로 향한다",
+              "next": "throne"
+            }
+          ]
+        },
+        "throne": {
+          "text": "왕은 왕좌에 앉아 있다. 그 눈빛은 공허하다.\n저주가 몸을 잠식해가고 있다는 걸 한눈에 알 수 있다.\n그가 천천히 입을 연다:\n'오래 기다렸다.'\n그리고 — 당신의 얼굴을 보며, 처음으로 표정이 흔들린다.\n'...너. 3년 전 그 아이의.'\n그가 알고 있었다.",
+          "choices": [
+            {
+              "text": "저주를 끊는다 — 계약을 무효화한다",
+              "conditions": { "hasSword": true, "hasRelic": true, "knowsTruth": true, "corrupted": false, "trustWizard": true, "killedVillager": false, "sawSecret": true },
+              "next": "true_ending"
+            },
+            {
+              "text": "왕을 처단한다",
+              "conditions": { "hasSword": true, "knowsTruth": true, "trustWizard": false, "killedVillager": true },
+              "next": "king_ending"
+            },
+            {
+              "text": "유물을 해방한다",
+              "conditions": { "hasRelic": true, "corrupted": true, "sawSecret": true, "usedRelic": ">=2" },
+              "next": "doom_ending"
+            },
+            {
+              "text": "왕에게 계약서를 내민다 — 당신이 무엇에 서명했는지 알아야 한다",
+              "conditions": { "knowsTruth": true },
+              "next": "hero_ending"
+            },
+            {
+              "text": "검을 버리고 왕 앞에 무릎을 꿇는다",
+              "next": "sacrifice_ending"
+            }
+          ]
+        },
+        "hero_ending": {
+          "text": "왕이 계약서를 읽었다.\n긴 침묵.\n'...나는 몰랐다. 진짜로.'\n눈물이 아니었다. 그보다 더 깊은 무언가였다.\n\n왕은 그 자리에서 계약을 소리 내어 부정했다.\n왕좌를 포기하고, 이름을 내려놓고, 저주를 스스로 끊었다.\n그것은 그가 살면서 처음으로 한 — 진짜 선택이었다.\n\n지하의 관들이 열렸다. 동생이 눈을 떴다.\n왕국은 천천히 숨을 되찾기 시작했다.\n당신은 동생의 손을 잡고 성문을 걸어나왔다.\n아무도 당신의 이름을 기억하지 않아도, 그것으로 충분했다.",
+          "ending": true
+        },
+        "king_ending": {
+          "text": "왕의 피가 왕좌를 적셨다.\n저주는 풀렸다.\n그러나 — 지하의 관들은 그대로였다.\n계약이 왕의 죽음으로 풀리지 않았다.\n\n당신은 텅 빈 왕좌 앞에 홀로 서 있었다.\n동생은 아직 지하에 있다.\n새 왕이라는 소문이 퍼졌지만, 당신은 왕좌에 앉지 않았다.\n\n매일 밤 지하로 내려갔다. 관 앞에 앉아 이름을 불렀다.\n계약을 푸는 법을 찾는 데 남은 생을 바쳤다.\n끝내 찾았는지는 — 아무도 모른다.",
+          "ending": true,
+          "hidden": true
+        },
+        "doom_ending": {
+          "text": "유물이 세 번째로 빛을 냈다.\n계약이 완성됐다.\n당신의 몸이 빛 속으로 흡수되기 시작했다.\n\n마지막 순간, 동생의 관이 열렸다.\n동생이 눈을 떴다. 당신을 보았다.\n그러나 당신은 이미 형체가 없었다.\n\n동생이 부르는 이름이 들렸다.\n그리고 아무것도 들리지 않았다.\n\n아에르돈의 저주는 풀렸다.\n그리고 새로운 담보가 생겼다.",
+          "ending": true,
+          "hidden": true
+        },
+        "true_ending": {
+          "text": "검이 저주의 뿌리를 끊었다.\n유물이 그 상처를 봉했다.\n마법사가 직접 계약의 마지막 줄을 지웠다.\n그리고 — 왕이 스스로 왕좌에서 내려섰다.\n\n지하의 관들이 열렸다. 사람들이 눈을 떴다.\n동생이 당신의 이름을 불렀다.\n\n마법사는 사라졌다. 찾는 사람도 없었다.\n왕은 왕국의 첫 번째 시민이 됐다.\n당신과 동생은 국경 너머로 걸어나갔다.\n\n아에르돈은 다시 새를 노래하게 했다.\n그것으로 충분했다.",
+          "ending": true,
+          "hidden": true
+        },
+        "true_ending_alt": {
+          "text": "계약서가 재가 됐다.\n사람들이 지하에서 걸어 나왔다.\n동생이 눈을 떴다.\n\n왕은 혼자 왕좌에 남았다.\n저주가 풀린 왕국에서, 아무도 하지 않은 왕으로.\n그것이 그의 형벌이었다.\n\n당신과 동생은 아무 말 없이 성문을 빠져나갔다.\n숲은 조용했다. 그러나 이번엔 새가 울고 있었다.",
+          "ending": true,
+          "hidden": true
+        },
+        "sacrifice_ending": {
+          "text": "당신이 무릎을 꿇는 순간, 유물이 스스로 빛을 냈다.\n왕이 눈을 크게 떴다.\n'당신은... 계약을 짊어지려는 건가?'\n\n당신은 아무 말도 하지 않았다.\n동생을 꺼낼 수 있다면.\n그것만 생각했다.\n\n빛이 당신을 감쌄다.\n저주가 사라졌다. 관들이 열렸다. 동생이 눈을 떴다.\n\n그러나 당신은 아에르돈에서 영영 떠나지 못하게 됐다.\n계약의 새 담보. 형체도, 이름도 없이.\n\n동생이 성문 밖으로 걸어나가는 걸 당신은 보았다.\n동생은 한 번도 뒤를 돌아보지 않았다.\n당신이 거기 있는 걸 — 몰랐으니까.",
+          "ending": true,
+          "hidden": true
+        },
+        "escape_ending": {
+          "text": "당신은 검을 내려놓고 등을 돌렸다.\n왕이 부르는 소리가 들렸다.\n멈추지 않았다.\n\n성문 밖. 재 냄새.\n당신의 짐은 가벼워졌다.\n동생은 아직 지하에 있다.\n\n당신은 그 사실을 알면서 걸었다.\n그것이 구원인지, 도주인지.\n아마 평생 모를 것이다.",
+          "ending": true
+        },
+        "death_wolf": {
+          "text": "늑대가 덮쳐왔다.\n당신은 맨손으로 버텼지만 역부족이었다.\n쓰러지면서 마지막으로 본 것 — 늑대의 목에 달린 왕실 문장 목줄.\n이 짐승도 피해자였다.\n그리고 당신도, 이제 이 땅에 남겨졌다.",
+          "ending": true
+        },
+        "death_gate": {
+          "text": "성문의 병사들이 당신을 에워쌌다.\n무기도, 통로도, 편도 없었다.\n마지막 순간 — 성벽 너머 탑 지하 창문에서 희미한 빛이 새어나오는 게 보였다.\n동생이 있는 곳.\n그 빛이 꺼지기 전에, 당신이 먼저 쓰러졌다.",
+          "ending": true
+        }
+      }
+    };
+
+    const saved = loadGame();
+    if (saved) {
+        dom.btnContinue.style.display = "inline-flex";
+    }
+    console.log("[init] 초기화 완료, dom.choicesArea:", dom.choicesArea);
+}
+
+// ─── 화면 전환 ─────────────────────────────────────────────
+
+function switchScreen(from, to) {
+    from.classList.remove("active");
+    setTimeout(() => to.classList.add("active"), 100);
+}
+
+// ─── API 호출 ──────────────────────────────────────────────
+
+// (백엔드 제거로 API 함수 삭제)
+
+// ─── 게임 시작 ─────────────────────────────────────────────
+
+function startGame() {
+    if (!scenario) {
+        console.error("[startGame] 시나리오가 로드되지 않음");
+        return;
+    }
+
+    clearSave();
+    gameState = { ...scenario.initial_state, current_node: scenario.start };
+    isBossBattle = false;
+
+    switchScreen(dom.screenTitle, dom.screenGame);
+    updateUI();
+    updateScene();
+    const currentNode = scenario.nodes[gameState.current_node];
+    showStory(currentNode.text, currentNode.choices || [], []);
+    saveGame();
+}
+
+async function continueGame() {
+    if (!scenario) return;
+
+    const saved = loadGame();
+    if (!saved) return;
+
+    gameState = saved.state;
+    isBossBattle = false; // 트리 스토리에는 보스전 없음
+
+    switchScreen(dom.screenTitle, dom.screenGame);
+    updateUI();
+    updateScene();
+
+    const currentNode = scenario.nodes[gameState.current_node];
+    showStory(currentNode.text, currentNode.choices || [], []);
+}
+
+// ─── 스토리 선택 ───────────────────────────────────────────
+
+async function makeChoice(index) {
+    console.log("[makeChoice] 시작, index:", index, "currentChoices:", currentChoices);
+    if (isTyping || actionLocked) {
+        console.log("[makeChoice] 타이핑 중이거나 잠금 상태:", {isTyping, actionLocked});
+        return;
+    }
+    actionLocked = true;
+
+    try {
+        const choice = currentChoices[index];
+        console.log("[makeChoice] 선택된 choice:", choice);
+        if (!choice) {
+            console.error("[makeChoice] 유효하지 않은 선택지");
+            return;
+        }
+        const nextNodeId = choice.next;
+        console.log("[makeChoice] nextNodeId:", nextNodeId);
+        if (!nextNodeId || !scenario.nodes[nextNodeId]) {
+            console.error("[makeChoice] 다음 노드가 없음");
+            return;
+        }
+
+        // effects 적용
+        if (choice.effects) {
+            for (const [key, value] of Object.entries(choice.effects)) {
+                if (typeof value === 'string' && value.startsWith('+')) {
+                    gameState[key] = (gameState[key] || 0) + parseInt(value.slice(1));
+                } else if (typeof value === 'string' && value.startsWith('-')) {
+                    gameState[key] = (gameState[key] || 0) - parseInt(value.slice(1));
+                } else {
+                    gameState[key] = value;
+                }
+            }
+        }
+
+        // 다음 노드로 이동
+        gameState.current_node = nextNodeId;
+        const nextNode = scenario.nodes[nextNodeId];
+
+        if (nextNode.ending) {
+            showEnding(nextNode.text, gameState);
+            return;
+        }
+
+        updateUI();
+        updateScene();
+        showStory(nextNode.text, nextNode.choices || [], []);
+        saveGame();
+    } catch (error) {
+        console.error("[makeChoice] 예외 발생:", error);
+    } finally {
+        actionLocked = false;
+    }
+}
+
+// ─── 보스전 ────────────────────────────────────────────────
+
+async function bossAction(action) {
+    if (isTyping || actionLocked) return;
+    actionLocked = true;
+    showBossActions(false);
+    hideDamageDisplay();
+
+    const data = await api("/boss/turn", {
+        action,
+        state: gameState,
+    });
+
+    actionLocked = false;
+    if (!data) {
+        showBossActions(true);
+        return;
+    }
+
+    gameState = data.state;
+
+    // HP/MP 바 업데이트 with 애니메이션
+    updatePlayerBars(data.player_hp, data.player_mp);
+    updateBossBar(data.boss_hp, data.boss_max_hp);
+    updateUI();
+
+    // 데미지 표시
+    showDamageDisplay(data);
+
+    // 스크린 셰이크
+    if (data.boss_damage > 0) {
+        dom.screenGame.classList.add("shake");
+        setTimeout(() => dom.screenGame.classList.remove("shake"), 400);
+    }
+
+    await typeText(data.narration);
+
+    if (data.game_over) {
+        setTimeout(() => showGameOver(data.narration), 800);
+        saveGame();
+        return;
+    }
+
+    if (data.boss_dead) {
+        if (data.game_clear) {
+            setTimeout(() => showEnding(data.ending, gameState), 800);
+        } else {
+            setTimeout(
+                () =>
+                    showBossClear(
+                        gameState.boss.name,
+                        data.narration,
+                        gameState.chapter
+                    ),
+                800
+            );
+        }
+        isBossBattle = false;
+        showBossUI(false);
+        saveGame();
+        return;
+    }
+
+    showBossActions(true);
+    saveGame();
+}
+
+function openBossItemSelect() {
+    const items = gameState.player.items || [];
+    if (items.length === 0) {
+        closeBossItemSelect();
+        return;
+    }
+
+    let html = "";
+    const seen = {};
+    for (const name of items) {
+        if (seen[name]) continue;
+        seen[name] = true;
+        const count = items.filter((i) => i === name).length;
+        html += `
+            <button class="boss-item-entry" onclick="useBossItem('${name}')">
+                <span class="item-icon">${getItemIcon(name)}</span>
+                <span class="item-name">${name}${count > 1 ? ` x${count}` : ""}</span>
+            </button>
+        `;
+    }
+
+    dom.bossItemList.innerHTML = html;
+    dom.bossItemSelect.style.display = "block";
+}
+
+function closeBossItemSelect() {
+    dom.bossItemSelect.style.display = "none";
+}
+
+async function useBossItem(itemName) {
+    closeBossItemSelect();
+    if (isTyping || actionLocked) return;
+    actionLocked = true;
+    showBossActions(false);
+    hideDamageDisplay();
+
+    const data = await api("/boss/turn", {
+        action: "아이템",
+        item_name: itemName,
+        state: gameState,
+    });
+
+    actionLocked = false;
+    if (!data) {
+        showBossActions(true);
+        return;
+    }
+
+    gameState = data.state;
+    updatePlayerBars(data.player_hp, data.player_mp);
+    updateBossBar(data.boss_hp, data.boss_max_hp);
+    updateUI();
+    showDamageDisplay(data);
+
+    if (data.boss_damage > 0) {
+        dom.screenGame.classList.add("shake");
+        setTimeout(() => dom.screenGame.classList.remove("shake"), 400);
+    }
+
+    await typeText(data.narration);
+
+    if (data.game_over) {
+        setTimeout(() => showGameOver(data.narration), 800);
+        saveGame();
+        return;
+    }
+
+    if (data.boss_dead) {
+        if (data.game_clear) {
+            setTimeout(() => showEnding(data.ending, gameState), 800);
+        } else {
+            setTimeout(
+                () =>
+                    showBossClear(
+                        gameState.boss.name,
+                        data.narration,
+                        gameState.chapter
+                    ),
+                800
+            );
+        }
+        isBossBattle = false;
+        showBossUI(false);
+        saveGame();
+        return;
+    }
+
+    showBossActions(true);
+    saveGame();
+}
+
+async function retryBoss() {
+    dom.overlayGameover.style.display = "none";
+    showLoading(true);
+
+    const data = await api("/boss/retry", { state: gameState });
+    if (!data) return;
+
+    gameState = data.state;
+    isBossBattle = true;
+    showBossUI(true);
+    updateUI();
+    updateBossBar(data.boss.hp, data.boss.max_hp || data.boss.hp);
+    await typeText(data.story);
+    showBossActions(true);
+    saveGame();
+}
+
+// ─── 챕터 전환 ─────────────────────────────────────────────
+
+async function nextChapter() {
+    dom.overlayBossClear.style.display = "none";
+    showBossUI(false);
+
+    const data = await api("/next-chapter", {
+        state: gameState,
+    });
+
+    if (!data) return;
+
+    gameState = data.state;
+    isBossBattle = false;
+    updateUI();
+    updateScene();
+    showStory(data.story, data.choices, data.tendency_deltas);
+    saveGame();
+}
+
+// ─── UI 업데이트 ───────────────────────────────────────────
+
+function updateUI() {
+    // UI 업데이트 (트리 기반 게임에서는 필요 없음)
+    if (!gameState) return;
+}
+
+function updatePlayerBars(hp, mp) {
+    const hpPct = Math.max(0, (hp / 100) * 100);
+    const mpPct = Math.max(0, (mp / 50) * 100);
+
+    dom.barHp.style.width = `${hpPct}%`;
+    dom.textHp.textContent = `${hp} / 100`;
+    dom.barMp.style.width = `${mpPct}%`;
+    dom.textMp.textContent = `${mp} / 50`;
+}
+
+function updateBossBar(hp, maxHp) {
+    const pct = Math.max(0, (hp / maxHp) * 100);
+    dom.barBoss.style.width = `${pct}%`;
+    dom.textBossHp.textContent = `${hp} / ${maxHp}`;
+}
+
+function showBossUI(show) {
+    dom.bossStatus.style.display = show ? "block" : "none";
+    dom.choicesArea.style.display = show ? "none" : "flex";
+    dom.bossActions.style.display = show ? "grid" : "none";
+
+    if (show && gameState?.boss) {
+        dom.bossName.textContent = gameState.boss.name;
+        updateBossBar(
+            gameState.boss.hp,
+            gameState.boss.max_hp || gameState.boss.hp
+        );
+        dom.sceneImage.classList.add("boss-scene");
+        dom.sceneIcon.innerHTML = "&#128126;"; // 보스 아이콘
+    } else {
+        dom.sceneImage.classList.remove("boss-scene");
+    }
+}
+
+function showBossActions(show) {
+    const btns = dom.bossActions.querySelectorAll(".btn-action");
+    btns.forEach((btn) => (btn.disabled = !show));
+}
+
+function showDamageDisplay(data) {
+    dom.damageDisplay.style.display = "flex";
+
+    if (data.boss_damage > 0) {
+        dom.damagePlayer.textContent = `-${data.boss_damage} HP (${data.boss_action})`;
+        dom.damagePlayer.style.display = "block";
+    } else {
+        dom.damagePlayer.style.display = "none";
+    }
+
+    if (data.player_damage > 0) {
+        dom.damageBoss.textContent = `${data.player_damage} DMG! (${data.player_action})`;
+        dom.damageBoss.style.display = "block";
+    } else if (data.item_used) {
+        dom.damageBoss.textContent = `${data.item_used} 사용!`;
+        dom.damageBoss.style.display = "block";
+    } else {
+        dom.damageBoss.style.display = "none";
+    }
+}
+
+function hideDamageDisplay() {
+    dom.damageDisplay.style.display = "none";
+}
+
+function updateScene() {
+    if (!gameState) return;
+
+    dom.sceneImage.className = "scene-image";
+
+    const icons = ["&#127747;", "&#127795;", "&#127982;", "&#9731;", "&#10024;", "&#127776;", "&#127774;", "&#127769;"];
+    const randomIcon = icons[Math.floor(Math.random() * icons.length)];
+    dom.sceneIcon.innerHTML = randomIcon;
+}
+
+// ─── 스토리 표시 ───────────────────────────────────────────
+
+function showStory(story, choices, deltas) {
+    console.log("[showStory] 호출됨", {story, choices, deltas});
+    console.log("[showStory] dom.storyText:", dom.storyText);
+    
+    dom.choicesArea.style.display = "flex";
+    dom.bossActions.style.display = "none";
+    dom.choicesArea.innerHTML = "";
+    hideDamageDisplay();
+
+    console.log("[showStory] typeText 호출 전");
+    typeText(story).then(() => {
+        console.log("[showStory] typeText 완료");
+        showChoices(choices, deltas);
+    });
+}
+
+function showStoryText(text) {
+    dom.storyText.textContent = text;
+}
+
+function checkConditions(conditions) {
+    for (const [key, value] of Object.entries(conditions)) {
+        const currentValue = gameState[key];
+        if (typeof value === 'string' && value.startsWith('>=')) {
+            const num = parseInt(value.slice(2));
+            if (!(currentValue >= num)) return false;
+        } else if (typeof value === 'string' && value.startsWith('>')) {
+            const num = parseInt(value.slice(1));
+            if (!(currentValue > num)) return false;
+        } else if (typeof value === 'string' && value.startsWith('<=')) {
+            const num = parseInt(value.slice(2));
+            if (!(currentValue <= num)) return false;
+        } else if (typeof value === 'string' && value.startsWith('<')) {
+            const num = parseInt(value.slice(1));
+            if (!(currentValue < num)) return false;
+        } else {
+            if (currentValue !== value) return false;
+        }
+    }
+    return true;
+}
+
+function showChoices(choices, deltas) {
+    currentChoices = choices || [];
+    tendencyDeltas = deltas || [];
+
+    console.log("[showChoices] 현재 gameState:", gameState);
+    dom.choicesArea.innerHTML = "";
+    // conditions를 만족하는 선택지만 필터링
+    const validChoices = currentChoices.filter(choice => !choice.conditions || checkConditions(choice.conditions));
+    console.log("[showChoices] 유효한 선택지 수:", validChoices.length);
+    validChoices.forEach((choice, i) => {
+        console.log(`[showChoices] 선택지 표시: ${choice.text}`);
+        const btn = document.createElement("button");
+        btn.className = "btn-choice";
+        btn.textContent = choice.text || choice;
+        btn.addEventListener("click", () => {
+            console.log(`[button] 클릭됨, index: ${i}, choice: ${choice.text}`);
+            makeChoice(i);
+        });
+        console.log(`[showChoices] 버튼 생성됨:`, btn);
+        dom.choicesArea.appendChild(btn);
+    });
+    // currentChoices를 유효한 선택지로 업데이트
+    currentChoices = validChoices;
+}
+
+// ─── 타이핑 효과 ───────────────────────────────────────────
+
+function typeText(text) {
+    console.log("[typeText] 호출", {textLength: text?.length, text: text?.substring(0, 50)});
+    return new Promise((resolve) => {
+        if (!text) {
+            console.error("[typeText] text가 없습니다!");
+            resolve();
+            return;
+        }
+        
+        isTyping = true;
+        dom.storyText.textContent = "";
+        dom.typingIndicator.style.display = "flex";
+        console.log("[typeText] 초기화 완료");
+
+        // 짧은 딜레이 후 타이핑 시작 (AI가 생각하는 느낌)
+        setTimeout(() => {
+            dom.typingIndicator.style.display = "none";
+            let i = 0;
+            const speed = 30; // ms per char
+            console.log("[typeText] 타이핑 시작");
+
+            function type() {
+                if (i < text.length) {
+                    dom.storyText.textContent += text.charAt(i);
+                    i++;
+                    setTimeout(type, speed);
+                } else {
+                    console.log("[typeText] 타이핑 완료");
+                    isTyping = false;
+                    resolve();
+                }
+            }
+
+            type();
+        }, 500);
+    });
+}
+
+// 스토리 박스 클릭 시 타이핑 스킵
+document.querySelector(".story-box")?.addEventListener("click", () => {
+    if (isTyping) {
+        // 즉시 완성은 복잡하므로 속도를 극도로 빠르게 변경
+        // 현재 구현에서는 간단히 무시
+    }
+});
+
+// ─── 아이템 패널 ───────────────────────────────────────────
+
+function toggleItemPanel() {
+    const panel = dom.itemPanel;
+    if (panel.style.display === "none") {
+        renderItemPanel();
+        panel.style.display = "block";
+    } else {
+        panel.style.display = "none";
+    }
+}
+
+function renderItemPanel() {
+    const items = gameState?.player?.items || [];
+    if (items.length === 0) {
+        dom.itemList.innerHTML =
+            '<div class="item-empty">아이템이 없습니다</div>';
+        return;
+    }
+
+    const counted = {};
+    items.forEach((name) => {
+        counted[name] = (counted[name] || 0) + 1;
+    });
+
+    let html = "";
+    for (const [name, count] of Object.entries(counted)) {
+        html += `
+            <div class="item-entry">
+                <span class="item-icon">${getItemIcon(name)}</span>
+                <div class="item-info">
+                    <div class="item-name">${name}${count > 1 ? ` x${count}` : ""}</div>
+                    <div class="item-desc">${getItemDesc(name)}</div>
+                </div>
+            </div>
+        `;
+    }
+    dom.itemList.innerHTML = html;
+}
+
+function getItemIcon(name) {
+    const icons = {
+        "빛나는 포션": "\u{1F48E}",
+        "마나 크리스탈": "\u{1F48E}",
+        "수호의 부적": "\u{1F6E1}",
+        "용기의 반지": "\u{1F48D}",
+    };
+    return icons[name] || "\u{1F381}";
+}
+
+function getItemDesc(name) {
+    const descs = {
+        "빛나는 포션": "체력을 30 회복한다",
+        "마나 크리스탈": "마나를 20 회복한다",
+        "수호의 부적": "다음 공격의 피해를 15 줄인다",
+        "용기의 반지": "다음 공격의 피해를 10 올린다",
+    };
+    return descs[name] || "";
+}
+
+// ─── 오버레이 ──────────────────────────────────────────────
+
+function showGameOver(text) {
+    dom.gameoverText.textContent =
+        text || "하지만 포기하지 않아! 다시 일어설 시간이야!";
+    dom.overlayGameover.style.display = "flex";
+}
+
+function showBossClear(bossName, text, nextChapter) {
+    dom.bossClearTitle.textContent = `${bossName} 격파!`;
+    dom.bossClearText.textContent = text || "훌륭해! 다음 모험이 기다리고 있어!";
+    dom.btnNextChapter.textContent = `챕터 ${nextChapter}로 출발`;
+    dom.overlayBossClear.style.display = "flex";
+}
+
+function showEnding(endingText, state) {
+    const route = state?.player?.route || "결말";
+    const badges = {
+        "빛의 길": "\u{2728}",
+        "균형의 길": "\u{2696}",
+        "어둠의 길": "\u{1F319}",
+    };
+    dom.endingBadge.textContent = badges[route] || "\u{2B50}";
+    dom.endingText.textContent =
+        endingText || "리아나의 모험이 끝났다. 루멘드리아에 평화가 찾아왔다.";
+    dom.endingRoute.textContent = route;
+    dom.overlayEnding.style.display = "flex";
+    clearSave();
+}
+
+function backToTitle() {
+    dom.overlayEnding.style.display = "none";
+    isBossBattle = false;
+    gameState = null;
+    switchScreen(dom.screenGame, dom.screenTitle);
+
+    const saved = loadGame();
+    dom.btnContinue.style.display = saved ? "inline-flex" : "none";
+}
+
+// ─── 저장/불러오기 ─────────────────────────────────────────
+
+function saveGame() {
+    if (!gameState) return;
+    const data = {
+        state: gameState,
+        isBossBattle,
+        lastStory: dom.storyText.textContent,
+        choices: currentChoices,
+        tendencyDeltas,
+        savedAt: Date.now(),
+    };
+    try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    } catch (e) {
+        console.warn("[Save] localStorage 저장 실패:", e);
+    }
+}
+
+function loadGame() {
+    try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function clearSave() {
+    localStorage.removeItem(SAVE_KEY);
+    dom.btnContinue.style.display = "none";
+}
+
+// ─── 글로벌 함수 등록 (onclick에서 호출) ───────────────────
+
+window.startGame = startGame;
+window.continueGame = continueGame;
+window.makeChoice = makeChoice;
+window.bossAction = bossAction;
+window.retryBoss = retryBoss;
+window.nextChapter = nextChapter;
+window.backToTitle = backToTitle;
+window.toggleItemPanel = toggleItemPanel;
+window.openBossItemSelect = openBossItemSelect;
+window.closeBossItemSelect = closeBossItemSelect;
+window.useBossItem = useBossItem;

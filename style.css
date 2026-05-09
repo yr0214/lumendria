@@ -14,9 +14,9 @@
     --accent-glow: rgba(245, 158, 11, 0.4);
 
     /* 배경 */
-    --bg-deep: #0f0a1e;
-    --bg-card: rgba(30, 20, 60, 0.85);
-    --bg-card-solid: #1e143c;
+    --bg-deep: #0a0614;
+    --bg-card: rgba(20, 15, 40, 0.9);
+    --bg-card-solid: #141028;
 
     /* 텍스트 */
     --text-primary: #f0e6ff;
@@ -125,7 +125,7 @@ body {
     transform: translate(-50%, -60%);
     width: 400px;
     height: 400px;
-    background: radial-gradient(circle, rgba(124, 58, 237, 0.2) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(80, 30, 150, 0.15) 0%, transparent 70%);
     border-radius: 50%;
     animation: pulse-glow 4s ease-in-out infinite;
     pointer-events: none;
