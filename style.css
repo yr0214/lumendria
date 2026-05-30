@@ -551,6 +551,54 @@ body {
     position: relative;
     overflow: hidden;
     transition: all var(--transition-slow);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+}
+
+.scene-image-controls {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0.75rem;
+    pointer-events: none;
+}
+
+.scene-image-controls.hidden {
+    display: none;
+}
+
+.scene-image-btn {
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.45);
+    border: none;
+    color: #fff;
+    width: 40px;
+    height: 40px;
+    border-radius: 100%;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+    opacity: 0.85;
+}
+
+.scene-image-btn:hover {
+    opacity: 1;
+}
+
+.scene-image-counter {
+    position: absolute;
+    left: 50%;
+    bottom: 0.75rem;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    padding: 0.25rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    pointer-events: none;
 }
 
 .scene-image.chapter-1 {

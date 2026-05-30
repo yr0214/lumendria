@@ -13,8 +13,11 @@ let isTyping = false;
 let isBossBattle = false;
 let actionLocked = false;
 let scenario = null;
+let currentSceneImages = [];
+let currentSceneImageIndex = 0;
 
 const SAVE_KEY = "lumendria_save";
+const DEFAULT_IMAGE_BASE_PATH = "file:///C:/Users/User/Downloads/lunmandria/";
 
 // ─── DOM 캐시 ──────────────────────────────────────────────
 
@@ -37,6 +40,10 @@ const dom = {
     barBoss: $("#bar-boss"),
     textBossHp: $("#text-boss-hp"),
     sceneImage: $("#scene-image"),
+    sceneImageControls: $("#scene-image-controls"),
+    sceneImagePrev: $("#scene-image-prev"),
+    sceneImageNext: $("#scene-image-next"),
+    sceneImageCounter: $("#scene-image-counter"),
     sceneIcon: $("#scene-icon"),
     storyText: $("#story-text"),
     typingIndicator: $("#typing-indicator"),
@@ -124,6 +131,7 @@ function init() {
         "version": "3.0",
         "designer_note": "주인공 동기 / 마법사 반전 간접화 / 선택지 트레이드오프 / 죽음 분기 / killedVillager 파급효과 / 엔딩 결 차별화"
       },
+      "imageFolder": "file:///C:/Users/User/Downloads/lunmandria/",
       "initial_state": {
         "hasSword": false,
         "hasRelic": false,
@@ -454,7 +462,7 @@ function init() {
           ]
         },
         "whisper": {
-          "text": "유물이 손 안에서 뛰기 시작한다.\n목소리가 스며든다. 달콤하다. 그리고 익숙하다.\n— 동생의 목소리다.\n'언니(오빠). 나야. 여기 있어. 이걸 써. 나를 꺼내줘.'\n당신은 안다. 이게 진짜일 리 없다는 것을.\n그러나 손이 떨린다.",
+          "text": "유물이 손 안에서 뛰기 시작한다.\n목소리가 스며든다. 달콤하다. 그리고 익숙하다.\n— 동생의 목소리다.\n'누나). 나야. 여기 있어. 이걸 써. 나를 꺼내줘.'\n당신은 안다. 이게 진짜일 리 없다는 것을.\n그러나 손이 떨린다.",
           "choices": [
             {
               "text": "목소리를 믿고 힘을 받아들인다",
@@ -922,6 +930,17 @@ function init() {
     if (saved) {
         dom.btnContinue.style.display = "inline-flex";
     }
+
+    dom.sceneImagePrev?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        showSceneImage(currentSceneImageIndex - 1);
+    });
+
+    dom.sceneImageNext?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        showSceneImage(currentSceneImageIndex + 1);
+    });
+
     console.log("[init] 초기화 완료, dom.choicesArea:", dom.choicesArea);
 }
 
@@ -1296,10 +1315,95 @@ function hideDamageDisplay() {
     dom.damageDisplay.style.display = "none";
 }
 
+function resolveImagePath(entry) {
+    if (!entry) return null;
+    const raw = String(entry).trim();
+    if (!raw) return null;
+    if (/^(file|https?):\/\//i.test(raw)) {
+        return raw;
+    }
+
+    const folder = (scenario?.imageFolder || DEFAULT_IMAGE_BASE_PATH).replace(/\\\\/g, "/");
+    const normalizedFolder = folder.endsWith("/") ? folder : `${folder}/`;
+    const title = scenario?.meta?.title ? scenario.meta.title.trim() : "";
+
+    if (/^\d+$/.test(raw)) {
+        return `${normalizedFolder}${encodeURIComponent(title)}-${raw}.png`;
+    }
+
+    const normalizedRaw = raw.replace(/\\\\/g, "/");
+    if (normalizedRaw.startsWith("/")) {
+        const encodedPath = normalizedRaw
+            .split("/")
+            .map((segment) => encodeURIComponent(segment))
+            .join("/");
+        return `file://${encodedPath}`;
+    }
+    const encodedRelative = normalizedRaw
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+    return `${normalizedFolder}${encodedRelative}`;
+}
+
+function getNodeImages(node) {
+    if (!node && !scenario) return [];
+    let rawImages = node?.images ?? node?.image ?? scenario?.images ?? [];
+    if (!rawImages) rawImages = [];
+    const entries = Array.isArray(rawImages) ? rawImages.slice() : [rawImages];
+
+    const images = entries
+        .map((entry) => {
+            if (entry == null) return null;
+            if (typeof entry === "number" || /^\d+$/.test(String(entry).trim())) {
+                return resolveImagePath(entry);
+            }
+            return resolveImagePath(String(entry));
+        })
+        .filter(Boolean);
+
+    if (images.length === 0 && scenario?.imageCount && scenario?.meta?.title) {
+        for (let i = 1; i <= scenario.imageCount; i += 1) {
+            images.push(resolveImagePath(String(i)));
+        }
+    }
+
+    return images;
+}
+
+function showSceneImage(index) {
+    if (!currentSceneImages || currentSceneImages.length === 0) {
+        return;
+    }
+    const count = currentSceneImages.length;
+    const nextIndex = ((index % count) + count) % count;
+    currentSceneImageIndex = nextIndex;
+    const url = currentSceneImages[currentSceneImageIndex];
+
+    dom.sceneImage.style.backgroundImage = `url('${url}')`;
+    dom.sceneIcon.style.display = "none";
+    dom.sceneImageControls.classList.remove("hidden");
+    dom.sceneImageCounter.textContent = `${currentSceneImageIndex + 1} / ${count}`;
+    dom.sceneImage.classList.add("has-image");
+}
+
 function updateScene() {
     if (!gameState) return;
 
     dom.sceneImage.className = "scene-image";
+    dom.sceneImage.style.backgroundImage = "";
+    dom.sceneIcon.style.display = "block";
+    dom.sceneImageControls.classList.add("hidden");
+    dom.sceneImageCounter.textContent = "";
+    currentSceneImages = [];
+    currentSceneImageIndex = 0;
+
+    const currentNode = scenario.nodes[gameState.current_node];
+    currentSceneImages = getNodeImages(currentNode);
+    if (currentSceneImages.length > 0) {
+        showSceneImage(0);
+        return;
+    }
 
     const icons = ["&#127747;", "&#127795;", "&#127982;", "&#9731;", "&#10024;", "&#127776;", "&#127774;", "&#127769;"];
     const randomIcon = icons[Math.floor(Math.random() * icons.length)];
