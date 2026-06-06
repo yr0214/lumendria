@@ -91,13 +91,22 @@ body {
     flex-direction: column;
     opacity: 0;
     visibility: hidden;
-    transition: opacity var(--transition-slow), visibility var(--transition-slow);
+    transition: opacity var(--transition-slow);
     z-index: 1;
 }
 
 .screen.active {
     opacity: 1;
-    visibility: visible;
+    visibility: visible !important;
+}
+
+/* Ensure children of an active screen are visible (workaround for visibility override) */
+.screen.active .scene-area,
+.screen.active .scene-image,
+.screen.active {
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
 }
 
 /* ─── 타이틀 화면 ───────────────────────────────────────── */
@@ -549,6 +558,7 @@ body {
     aspect-ratio: 16 / 9;
     border-radius: var(--radius-lg);
     position: relative;
+    z-index: 0;
     overflow: hidden;
     transition: all var(--transition-slow);
     background-position: center;
@@ -556,18 +566,51 @@ body {
     background-repeat: no-repeat;
 }
 
+/* ensure scene image does not capture pointer events and stays visually behind UI */
+.scene-image {
+    pointer-events: none;
+}
+
 .scene-image-controls {
     position: absolute;
     inset: 0;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
-    padding: 0.75rem;
+    padding: 0 0.75rem;
     pointer-events: none;
+    z-index: 150;
 }
 
 .scene-image-controls.hidden {
     display: none;
+}
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    /* Make the backdrop subtle so scene image remains visible */
+    background: rgba(15, 10, 30, 0.20);
+    backdrop-filter: blur(6px);
+    animation: overlay-appear 0.4s ease;
+    pointer-events: none;
+}
+
+.overlay-content {
+    text-align: center;
+    padding: 2.5rem 2rem;
+    max-width: 440px;
+    width: 90%;
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-glow);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-glow), 0 20px 60px rgba(0,0,0,0.5);
+    animation: content-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: auto;
 }
 
 .scene-image-btn {
@@ -646,6 +689,25 @@ body {
 .story-area {
     padding: 0 1rem;
     flex-shrink: 0;
+    position: relative; /* for external control positioning */
+}
+
+/* Back-to-title external button positioned to the right of the story box */
+.story-external-controls {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 6;
+    pointer-events: none; /* let the button itself enable pointer-events */
+}
+
+.btn-back-title {
+    pointer-events: auto;
+    white-space: nowrap;
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 12px;
 }
 
 .story-box {
@@ -658,6 +720,7 @@ body {
     padding: 1.25rem;
     min-height: 80px;
     position: relative;
+    z-index: 5;
 }
 
 .story-text {
@@ -743,6 +806,7 @@ body {
     margin: 0 auto;
     width: 100%;
     flex-shrink: 0;
+    z-index: 6;
 }
 
 .btn-choice {
@@ -787,6 +851,14 @@ body {
 
 .btn-choice:active {
     transform: translateX(2px);
+}
+
+/* disabled choice styling */
+.btn-choice:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 .btn-choice.selected {
@@ -974,6 +1046,7 @@ body {
     background: rgba(15, 10, 30, 0.85);
     backdrop-filter: blur(8px);
     animation: overlay-appear 0.4s ease;
+    pointer-events: none;
 }
 
 @keyframes overlay-appear {
@@ -986,11 +1059,15 @@ body {
     padding: 2.5rem 2rem;
     max-width: 440px;
     width: 90%;
-    background: var(--bg-card-solid);
-    border: 1px solid var(--border-glow);
+    /* semi-transparent card so underlying scene shows through */
+    background: rgba(18, 16, 24, 0.62);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-glow), 0 20px 60px rgba(0,0,0,0.5);
+    box-shadow: var(--shadow-glow), 0 20px 60px rgba(0,0,0,0.4);
     animation: content-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: auto;
+    z-index: 101;
+    backdrop-filter: blur(6px) saturate(120%);
 }
 
 @keyframes content-pop {

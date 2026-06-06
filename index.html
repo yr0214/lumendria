@@ -35,6 +35,11 @@
         </div>
     </div>
 
+        <!-- 오른쪽 외부: 타이틀로 돌아가기 버튼 -->
+        <div class="story-external-controls" id="story-external-controls" style="display:none">
+            <button class="btn-primary btn-back-title" id="btn-back-to-title" onclick="backToTitle()">타이틀로</button>
+        </div>
+
     <!-- 게임 화면 -->
     <div id="screen-game" class="screen">
         <!-- 상태바 -->
@@ -168,21 +173,7 @@
         </div>
     </div>
 
-    <!-- 엔딩 오버레이 -->
-    <div class="overlay" id="overlay-ending" style="display:none">
-        <div class="overlay-content ending-content">
-            <div class="ending-badge" id="ending-badge"></div>
-            <h2>The End</h2>
-            <p class="overlay-text ending-text" id="ending-text"></p>
-            <div class="ending-stats">
-                <div class="stat">
-                    <span class="stat-label">엔딩</span>
-                    <span class="stat-value" id="ending-route"></span>
-                </div>
-            </div>
-            <button class="btn-primary" onclick="backToTitle()">타이틀로 돌아가기</button>
-        </div>
-    </div>
+    <!-- 엔딩 오버레이 제거됨 -->
 
     <!-- 로딩 오버레이 -->
     <div class="overlay overlay-loading" id="overlay-loading" style="display:none">
@@ -192,6 +183,12 @@
         </div>
     </div>
 
+    <script>
+        // EMBEDDED_IMAGES: 페이지에 이미지를 직접 임베드하려면
+        // 아래 객체에 키: dataURI 형식으로 추가하세요.
+        // 예: window.EMBEDDED_IMAGES = { "start-1": "data:image/png;base64,iVBORw0..." }
+        window.EMBEDDED_IMAGES = window.EMBEDDED_IMAGES || {};
+    </script>
     <script src="./game.js"></script>
     <script>
         init();
