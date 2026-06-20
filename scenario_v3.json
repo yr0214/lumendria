@@ -223,6 +223,13 @@
             "usedRelic": "+1"
           },
           "next": "wolf_calm"
+        },
+        {
+          "text": "맨손으로 맞선다 — 죽어도 복수는 해야 한다",
+          "conditions": {
+            "hasSword": false
+          },
+          "next": "death_wolf"
         }
       ]
     },

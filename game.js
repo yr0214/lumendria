@@ -186,6 +186,12 @@ function renderEnding() {
   dom.choices.innerHTML = '';
   choiceMap = [];
 
+  // 엔딩 노드는 이미지가 화면 가득 차게
+  const gameScreen = document.getElementById('screen-game');
+  if (node?.ending) {
+    gameScreen?.classList.add('ending-mode');
+  }
+
   const wrap = document.createElement('div');
   wrap.className = 'ending';
 
@@ -258,6 +264,10 @@ function matchCondition(stateVal, expected) {
 function enterNode(nodeKey) {
   gameState.current_node = nodeKey;
   const node = scenario.nodes[nodeKey];
+  // 엔딩이 아닌 노드면 풀스크린 해제
+  if (!node?.ending) {
+    document.getElementById('screen-game')?.classList.remove('ending-mode');
+  }
   applyEffects(node?.effects);
   renderTrace();
   updateScene();
@@ -271,7 +281,10 @@ function startGame() {
   const title = document.getElementById('screen-title');
   const gameScreen = document.getElementById('screen-game');
   if (title) title.classList.remove('active');
-  if (gameScreen) gameScreen.classList.add('active');
+  if (gameScreen) {
+    gameScreen.classList.add('active');
+    gameScreen.classList.remove('ending-mode');
+  }
 
   gameState = { ...scenario.initial_state };
   prevTrace = new Set();

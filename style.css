@@ -438,6 +438,95 @@ kbd {
 
 .choice-restart .choice-text { flex: none; text-align: center; }
 
+/* ─── 엔딩 풀스크린 ─────────────────────────────────────── */
+
+/* 엔딩 노드: 이미지가 화면 가득, 글씨는 오버레이 */
+.ending-mode .stage {
+  position: relative;
+  z-index: 2;
+  justify-content: flex-end;
+  min-height: 100dvh;
+  padding: 0 0 1rem;
+  max-width: 100%;
+}
+
+.ending-mode .trace {
+  display: none;
+}
+
+.ending-mode .scene {
+  position: fixed;
+  inset: 0;
+  max-height: none;
+  margin: 0;
+  z-index: 0;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.ending-mode .scene-frame {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+  border: none;
+  border-radius: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: none;
+}
+
+.ending-mode .scene-frame.has-image {
+  opacity: 1;
+}
+
+/* 이미지 위 어두운 그라디언트 오버레이 — 글씨 가독성 확보 */
+.ending-mode .scene-vignette {
+  background:
+    linear-gradient(to top, rgba(8,9,10,0.75) 0%, rgba(8,9,10,0.25) 40%, transparent 60%),
+    radial-gradient(100% 60% at 50% 0%, rgba(8,9,10,0.15) 0%, transparent 70%);
+}
+
+/* 텍스트 박스 — 가로로 길게, 화면 하단에 고정 */
+.ending-mode .story {
+  margin-top: auto;
+}
+
+.ending-mode .story-text {
+  text-shadow: 0 2px 12px rgba(0,0,0,0.7);
+  padding: 1.25rem 1.5rem 0.5rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.ending-mode .choices {
+  padding: 0 1.5rem 1.5rem;
+}
+
+.ending-mode .ending {
+  animation-delay: 0.5s;
+  padding: 0.4rem 0 0.2rem;
+}
+
+.ending-mode .ending-label {
+  font-size: 1.1rem;
+  color: var(--accent);
+  text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+}
+
+.ending-mode .choice-restart {
+  background: rgba(255,255,255,0.9);
+  color: #08090a;
+  border: none;
+  font-weight: 600;
+}
+
+.ending-mode .choice-restart:hover {
+  background: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+}
+
 /* ─── 애니메이션 ────────────────────────────────────────── */
 
 @keyframes rise {
