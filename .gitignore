@@ -1,5 +1,19 @@
+# 비밀 정보 (API 키 등) — 절대 커밋 금지
 .env
+.env.*
+!.env.example
+
+# 파이썬 (story_graph 생성 스크립트용)
+venv/
 __pycache__/
 *.pyc
+
+# OS / 에디터
 .DS_Store
-venv/
+Thumbs.db
+
+# 의존성
+node_modules/
+
+# 에이전트/도구 아티팩트
+.gstack/

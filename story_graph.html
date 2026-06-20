@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>아에르돈의 계약 시나리오 그래프</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Noto Sans KR', sans-serif; background: #0b1324; color: #eef2ff; }
+        header { padding: 1rem; background: #111827; border-bottom: 1px solid #334155; }
+        header h1 { margin: 0; font-size: 1.4rem; }
+        .toolbar { padding: 0.75rem 1rem; background: #111827; border-bottom: 1px solid #334155; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+        .toolbar .button { background: #2563eb; color: #f8fafc; border: none; border-radius: 0.5rem; padding: 0.55rem 0.9rem; cursor: pointer; }
+        .toolbar .button:hover { background: #1d4ed8; }
+        .toolbar strong { color: #93c5fd; }
+        #network { width: 100vw; height: calc(100vh - 120px); }
+        .footer { padding: 0.8rem 1rem; background: #0f172a; color: #cbd5e1; font-size: 0.95rem; border-top: 1px solid #334155; }
+    </style>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <script src="./story_graph_data.js"></script>
+</head>
+<body>
+    <header>
+        <h1>아에르돈의 계약 시나리오 그래프</h1>
+    </header>
+    <div class="toolbar">
+        <strong>노드:</strong> <span id="node-count"></span>
+        <strong>간선:</strong> <span id="edge-count"></span>
+        <button class="button" onclick="network.fit();">전체 보기</button>
+        <button class="button" onclick="network.redraw();">다시 정렬</button>
+        <button class="button" onclick="toggleHierarchical();">계층형 토글</button>
+        <button class="button" onclick="expandAll();">전체 확장</button>
+    </div>
+    <div id="network"></div>
+    <div class="footer">곡선 연결과 계층형 레이아웃을 사용해 흐름을 잘 보이도록 구성했습니다. 노드를 클릭하면 장면 ID와 텍스트가 표시됩니다.</div>
+    <script>
+        const nodes = new vis.DataSet(window.storyGraphData.nodes);
+        const edges = new vis.DataSet(window.storyGraphData.edges);
+        const container = document.getElementById('network');
+        const data = { nodes, edges };
+        let hierarchicalEnabled = true;
+
+        const options = {
+            layout: {
+                hierarchical: {
+                    enabled: hierarchicalEnabled,
+                    direction: 'UD',
+                    sortMethod: 'directed',
+                    levelSeparation: 180,
+                    nodeSpacing: 260,
+                    treeSpacing: 260,
+                    parentSpacing: 260,
+                    blockShifting: true,
+                    edgeMinimization: true,
+                    shakeTowards: 'leaves'
+                }
+            },
+            interaction: {
+                hover: true,
+                navigationButtons: true,
+                keyboard: true,
+                multiselect: false,
+                tooltipDelay: 100
+            },
+            nodes: {
+                shape: 'box',
+                color: {
+                    background: '#1e293b',
+                    border: '#38bdf8',
+                    highlight: { background: '#38bdf8', border: '#f8fafc' }
+                },
+                font: { color: '#f8fafc', size: 12, face: 'Noto Sans KR' },
+                margin: 12,
+                widthConstraint: { maximum: 200 }
+            },
+            edges: {
+                arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+                color: '#7dd3fc',
+                smooth: {
+                    enabled: true,
+                    type: 'straightCross'
+                }
+            },
+            physics: { enabled: false }
+        };
+
+        var network = new vis.Network(container, data, options);
+        document.getElementById('node-count').textContent = window.storyGraphData.nodes.length;
+        document.getElementById('edge-count').textContent = window.storyGraphData.edges.length;
+
+        network.on('selectNode', function(params) {
+            const node = window.storyGraphData.nodes.find(n => n.id === params.nodes[0]);
+            if (!node) return;
+            alert(`노드: ${node.id}\n${node.label.replace(/\\n/g, '\n')}\n\n${node.title}`);
+        });
+
+        function toggleHierarchical() {
+            hierarchicalEnabled = !hierarchicalEnabled;
+            network.setOptions({ layout: { hierarchical: { enabled: hierarchicalEnabled } } });
+            network.fit();
+        }
+
+        function expandAll() {
+            network.fit();
+        }
+    </script>
+</body>
+</html>

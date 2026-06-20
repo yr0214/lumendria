@@ -1,0 +1,481 @@
+/* ═══════════════════════════════════════════════════════
+   아에르돈의 계약 — 인터랙티브 픽션 UI
+   디자인 시스템: Linear (oh-my-design.kr/builder)
+   "어둠이 기본 매질 — 콘텐츠가 별빛처럼 어둠에서 떠오른다"
+   near-black 캔버스 · 휘도 위계 · 단일 인디고 악센트 · whisper-thin 보더
+   산문은 명조(소설 느낌), UI는 Inter/고딕
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+    /* 표면 — 깊을수록 어둡고, 떠오를수록 밝다 */
+    --bg: #08090a;            /* 마케팅 블랙: 메인 캔버스 */
+    --panel: #0f1011;         /* 패널 */
+    --surface: #191a1b;       /* 떠오른 표면: 카드 */
+    --surface-hi: #28282c;    /* 호버/상승 표면 */
+
+    /* 텍스트 — 순백을 쓰지 않는다 */
+    --text: #f7f8f8;          /* 기본(미세하게 따뜻한 근백) */
+    --text-2: #d0d6e0;        /* 본문/2차 */
+    --text-3: #8a8f98;        /* 메타/플레이스홀더 */
+    --text-4: #62666d;        /* 가장 억제된 */
+
+    /* 단일 악센트 — 인디고 바이올렛, 아주 절제해서만 */
+    --accent: #7170ff;        /* 상호작용 */
+    --accent-hi: #828fff;     /* 호버 */
+    --accent-bg: #5e6ad2;     /* 채움 */
+    --danger: #d6604a;        /* 위험/피 — 흔적 한 칸에만 */
+
+    /* 보더 — whisper-thin 반투명 흰색 */
+    --line: rgba(255, 255, 255, 0.06);
+    --line-2: rgba(255, 255, 255, 0.09);
+    --fill: rgba(255, 255, 255, 0.03);
+    --fill-hi: rgba(255, 255, 255, 0.06);
+
+    --radius: 8px;
+    --radius-lg: 12px;
+    --radius-pill: 9999px;
+
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --font-ui: 'Inter', 'Noto Sans KR', sans-serif;
+    --font-serif: 'Noto Serif KR', 'Inter', serif;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+body {
+    font-family: var(--font-ui);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    letter-spacing: -0.011em;
+}
+
+/* 캔버스 가장자리를 어둠으로 — 콘텐츠가 빛처럼 가운데로 모인다 */
+.vignette {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(120% 90% at 50% 0%, rgba(94, 106, 210, 0.07) 0%, transparent 55%),
+        radial-gradient(140% 120% at 50% 100%, #000 0%, transparent 60%);
+}
+
+/* ─── 화면 전환 ─────────────────────────────────────────── */
+
+.screen {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.7s var(--ease);
+}
+
+.screen.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ─── 타이틀 화면 ───────────────────────────────────────── */
+
+#screen-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.title-wrap {
+    text-align: center;
+    max-width: 540px;
+    animation: rise 1s var(--ease) both;
+}
+
+.kicker {
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.42em;
+    color: var(--text-3);
+    margin-bottom: 1.5rem;
+    padding-left: 0.42em;
+}
+
+.title {
+    font-family: var(--font-serif);
+    font-size: clamp(2.6rem, 8vw, 4.2rem);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    margin-bottom: 0.9rem;
+}
+
+.title-sub {
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.24em;
+    color: var(--accent-hi);
+    margin-bottom: 2rem;
+    padding-left: 0.24em;
+}
+
+.title-desc {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    line-height: 1.9;
+    color: var(--text-2);
+    margin-bottom: 2.75rem;
+    word-break: keep-all;
+}
+
+.title-hint {
+    margin-top: 1.6rem;
+    font-size: 0.78rem;
+    color: var(--text-4);
+    letter-spacing: 0.01em;
+}
+
+kbd {
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-3);
+    background: var(--fill);
+    border: 1px solid var(--line-2);
+    border-radius: 5px;
+    padding: 0.05em 0.42em;
+    margin: 0 0.05em;
+}
+
+/* ─── 공통 버튼 (CTA) ───────────────────────────────────── */
+
+.btn-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: var(--font-ui);
+    font-size: 0.98rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--bg);
+    background: var(--text);
+    border: none;
+    border-radius: var(--radius-pill);
+    padding: 0.85rem 2.1rem;
+    cursor: pointer;
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+    box-shadow: 0 1px 1px rgba(0,0,0,0.5), 0 8px 30px rgba(94, 106, 210, 0.18);
+}
+
+.btn-cta:hover {
+    transform: translateY(-2px);
+    background: #fff;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.5), 0 14px 44px rgba(94, 106, 210, 0.32);
+}
+
+.btn-cta:active { transform: translateY(0); }
+
+/* ─── 무대 레이아웃 ─────────────────────────────────────── */
+
+.stage {
+    max-width: 720px;
+    margin: 0 auto;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1.4rem;
+    padding: 2.5rem 1.5rem 3rem;
+}
+
+/* ─── 흔적 (획득한 상태) ────────────────────────────────── */
+
+.trace {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-height: 1.6rem;
+    align-items: center;
+}
+
+.trace.is-empty { opacity: 0; }
+
+.pill {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+    background: var(--fill);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-pill);
+    padding: 0.22rem 0.7rem 0.22rem 0.62rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+}
+
+.pill::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 7px var(--accent);
+}
+
+.pill.pill-danger { color: #f1b3a7; }
+.pill.pill-danger::before { background: var(--danger); box-shadow: 0 0 7px var(--danger); }
+
+.pill.pill-new { animation: pill-pop 0.45s var(--ease) both; }
+
+/* ─── 장면 이미지 ───────────────────────────────────────── */
+
+.scene {
+    display: flex;
+    justify-content: center;
+    transition: max-height 0.4s var(--ease), opacity 0.4s var(--ease), margin 0.4s var(--ease);
+    max-height: 60vh;
+}
+
+/* 이미지가 없는 노드: 프레임을 접고 텍스트에 집중 */
+.scene.is-empty {
+    max-height: 0;
+    opacity: 0;
+    margin: -0.7rem 0;
+    pointer-events: none;
+}
+
+.scene-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    background-color: var(--panel);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 24px 60px rgba(0,0,0,0.55);
+    opacity: 0;
+    transition: opacity 0.6s var(--ease);
+}
+
+.scene-frame.has-image { opacity: 1; }
+
+.scene-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(120% 100% at 50% 0%, transparent 55%, rgba(8,9,10,0.45) 100%),
+        linear-gradient(to top, rgba(8,9,10,0.5) 0%, transparent 35%);
+}
+
+.scene-controls {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+}
+
+.scene-controls.hidden { display: none; }
+
+.scene-nav {
+    pointer-events: auto;
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem;
+    color: var(--text);
+    background: rgba(8, 9, 10, 0.55);
+    border: 1px solid var(--line-2);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.scene-nav:hover { background: var(--surface-hi); border-color: var(--accent); }
+
+.scene-counter {
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+    color: var(--text-2);
+    background: rgba(8, 9, 10, 0.55);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    padding: 0.2rem 0.7rem;
+    backdrop-filter: blur(6px);
+}
+
+/* ─── 스토리 (산문) ─────────────────────────────────────── */
+
+.story-text {
+    font-family: var(--font-serif);
+    font-size: 1.12rem;
+    line-height: 2;
+    color: var(--text);
+    word-break: keep-all;
+    letter-spacing: -0.005em;
+}
+
+.story-text .line {
+    opacity: 0;
+    animation: line-rise 0.7s var(--ease) forwards;
+}
+
+.story-text .line + .line { margin-top: 0.55rem; }
+
+/* ─── 선택지 ────────────────────────────────────────────── */
+
+.choices {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.choice {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    width: 100%;
+    text-align: left;
+    font-family: var(--font-ui);
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--text-2);
+    background: var(--fill);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0.95rem 1.15rem;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+                color 0.18s var(--ease), transform 0.18s var(--ease);
+    opacity: 0;
+    animation: rise 0.6s var(--ease) forwards;
+}
+
+/* 호버 시 색이 아니라 '휘도'가 오른다 — 왼쪽에 악센트 결 */
+.choice::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.18s var(--ease);
+}
+
+.choice:hover {
+    background: var(--fill-hi);
+    border-color: var(--line-2);
+    color: var(--text);
+    transform: translateX(3px);
+}
+
+.choice:hover::before { opacity: 1; }
+
+.choice:active { transform: translateX(1px); }
+
+.choice-key {
+    flex-shrink: 0;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-3);
+    background: var(--fill);
+    border: 1px solid var(--line-2);
+    border-radius: 5px;
+    transition: color 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+
+.choice:hover .choice-key { color: var(--accent-hi); border-color: var(--accent); }
+
+.choice-text { flex: 1; }
+
+/* ─── 엔딩 / 막다른 길 ──────────────────────────────────── */
+
+.ending {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.1rem;
+    padding: 0.6rem 0 0.2rem;
+    animation: rise 0.7s var(--ease) 0.3s both;
+}
+
+.ending-label {
+    font-family: var(--font-serif);
+    font-size: 0.95rem;
+    letter-spacing: 0.3em;
+    color: var(--accent-hi);
+    padding-left: 0.3em;
+}
+
+.choice-restart {
+    justify-content: center;
+    max-width: 240px;
+    color: var(--text);
+    background: var(--fill-hi);
+    opacity: 1;
+    animation: none;
+}
+
+.choice-restart .choice-text { flex: none; text-align: center; }
+
+/* ─── 애니메이션 ────────────────────────────────────────── */
+
+@keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes line-rise {
+    from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+    to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes pill-pop {
+    0%   { opacity: 0; transform: scale(0.8); }
+    60%  { transform: scale(1.06); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* ─── 반응형 ────────────────────────────────────────────── */
+
+@media (max-width: 540px) {
+    .stage { padding: 1.75rem 1.1rem 2.25rem; gap: 1.1rem; }
+    .story-text { font-size: 1.05rem; line-height: 1.95; }
+    .scene { max-height: 44vh; }
+    .choice { font-size: 0.95rem; padding: 0.85rem 1rem; }
+}
+
+@media (min-width: 768px) {
+    .story-text { font-size: 1.18rem; }
+}
+
+/* ─── 스크롤바 ──────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-hi); border-radius: var(--radius-pill); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-4); }
+
+/* ─── 유틸리티 ──────────────────────────────────────────── */
+
+.hidden { display: none !important; }
