@@ -142,14 +142,7 @@ function showStory(text, choices) {
       try {
         if (cond && gameState) {
           for (const [k, v] of Object.entries(cond)) {
-            const stateVal = gameState[k];
-            if (typeof v === 'boolean') {
-              if (stateVal !== v) { enabled = false; break; }
-            } else if (typeof v === 'number') {
-              if (stateVal !== v) { enabled = false; break; }
-            } else {
-              if (String(stateVal) !== String(v)) { enabled = false; break; }
-            }
+            if (!matchCondition(gameState[k], v)) { enabled = false; break; }
           }
         }
       } catch (e) { enabled = false; }
@@ -165,6 +158,55 @@ function showStory(text, choices) {
   }
 }
 
+// 선택지/노드의 effects를 gameState에 반영한다.
+// 값이 "+1"/"-2" 같은 문자열이면 누적, 그 외(true/false/숫자/문자열)는 대입.
+function applyEffects(effects) {
+  if (!effects) return;
+  for (const [key, value] of Object.entries(effects)) {
+    if (typeof value === 'string') {
+      const delta = value.match(/^\s*([+-])\s*(\d+)\s*$/);
+      if (delta) {
+        const current = Number(gameState[key]) || 0;
+        gameState[key] = current + (delta[1] === '-' ? -1 : 1) * Number(delta[2]);
+        continue;
+      }
+    }
+    gameState[key] = value;
+  }
+}
+
+// 선택지 conditions 한 항목을 평가한다.
+// ">=2" 같은 비교 문자열을 지원하고, 그 외는 동등 비교.
+function matchCondition(stateVal, expected) {
+  if (typeof expected === 'string') {
+    const cmp = expected.match(/^\s*(>=|<=|>|<|==|!=)\s*(-?\d+)\s*$/);
+    if (cmp) {
+      const current = Number(stateVal) || 0;
+      const target = Number(cmp[2]);
+      switch (cmp[1]) {
+        case '>=': return current >= target;
+        case '<=': return current <= target;
+        case '>': return current > target;
+        case '<': return current < target;
+        case '==': return current === target;
+        case '!=': return current !== target;
+      }
+    }
+  }
+  if (typeof expected === 'boolean') return Boolean(stateVal) === expected;
+  if (typeof expected === 'number') return Number(stateVal) === expected;
+  return String(stateVal) === String(expected);
+}
+
+// 노드로 진입한다: 노드 effects 적용 → 화면/스토리 갱신.
+function enterNode(nodeKey) {
+  gameState.current_node = nodeKey;
+  const node = scenario.nodes[nodeKey];
+  applyEffects(node?.effects);
+  updateScene();
+  showStory(node?.text, node?.choices || []);
+}
+
 function startGame() {
   if (!scenario) return;
   // 화면 전환: 타이틀 숨기고 게임 화면 표시
@@ -176,20 +218,16 @@ function startGame() {
     gameScreen.style.visibility = 'visible';
   }
 
-  gameState = { ...scenario.initial_state, current_node: scenario.start };
-  updateScene();
-  const node = scenario.nodes[gameState.current_node];
-  showStory(node.text, node.choices || []);
+  gameState = { ...scenario.initial_state };
+  enterNode(scenario.start);
 }
 
 function makeChoice(index) {
   const node = scenario.nodes[gameState.current_node];
   const choice = (node.choices || [])[index];
   if (!choice) return;
-  gameState.current_node = choice.next;
-  updateScene();
-  const next = scenario.nodes[gameState.current_node];
-  showStory(next.text, next.choices || []);
+  applyEffects(choice.effects); // 선택의 결과(검 획득 등)를 상태에 반영
+  enterNode(choice.next);
 }
 
 window.startGame = startGame;
