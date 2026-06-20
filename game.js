@@ -1,332 +1,343 @@
-/* Minimal game.js - focused on init, image loading, and scene display
-   Restores page initialization and image display for start node.
-*/
+/* 아에르돈의 계약 — 게임 엔진 (정적 분기 내러티브)
+   scenario_v3.json을 읽어 노드별 스토리/선택지/이미지를 렌더링하고,
+   선택의 결과(effects)를 상태에 반영해 분기를 처리한다.
+   연출(흔적 바, 산문 페이드인, 숫자키 선택, 엔딩)은 표현 계층에서 더한다. */
 
 console.log('[game.js] loaded');
-
-const DEFAULT_IMAGE_BASE_PATH = 'file:///C:/Users/User/Downloads/lunmandria/';
-const SAVE_KEY = 'lumendria_save';
 
 const $ = (s) => document.querySelector(s);
 
 const dom = {
+  sceneArea: $('#scene-area'),
   sceneImage: $('#scene-image'),
-  sceneIcon: $('#scene-icon'),
-  sceneImageControls: $('#scene-image-controls'),
-  sceneImagePrev: $('#scene-image-prev'),
-  sceneImageNext: $('#scene-image-next'),
-  sceneImageCounter: $('#scene-image-counter'),
+  sceneControls: $('#scene-image-controls'),
+  scenePrev: $('#scene-image-prev'),
+  sceneNext: $('#scene-image-next'),
+  sceneCounter: $('#scene-image-counter'),
   storyText: $('#story-text'),
-  choicesArea: $('#choices-area'),
-  btnContinue: $('#btn-continue'),
-  // ending overlay removed
-  btnBackToTitle: $('#btn-back-to-title'),
-  storyExternalControls: $('#story-external-controls'),
+  choices: $('#choices-area'),
+  trace: $('#trace'),
 };
 
 let scenario = null;
 let gameState = null;
 let currentSceneImages = [];
 let currentSceneImageIndex = 0;
+let choiceMap = []; // 화면에 보이는 선택지 위치(0..n) → 원본 choices 인덱스 (숫자키 매핑용)
+let prevTrace = new Set();
 
-function resolveImagePath(entry) {
-  if (!entry) return null;
-  const raw = String(entry).trim();
-  // 이미 data URI 이면 그대로 반환
-  if (/^data:/i.test(raw)) return raw;
-  // EMBEDDED_IMAGES 맵에 키가 있으면 그 값을 사용
-  try {
-    if (window?.EMBEDDED_IMAGES) {
-      // 직접 키 지정("start-1") 또는 접두사 embedded: 키를 허용
-      const key = raw.startsWith('embedded:') ? raw.slice('embedded:'.length) : raw;
-      if (window.EMBEDDED_IMAGES[key]) return window.EMBEDDED_IMAGES[key];
-    }
-  } catch (e) {
-    console.warn('[resolveImagePath] EMBEDDED_IMAGES 검사 중 오류', e);
-  }
-  if (/^(file|https?):\/\//i.test(raw)) return raw;
-  // If the entry already points into the images/ folder, keep it as-is
-  if (/^images\//.test(raw)) return raw;
-  // non-numeric entries: if it's a path (contains '/'), treat as relative path; otherwise prefix with images/
-  const encoded = raw.split('/').map(encodeURIComponent).join('/');
-  if (raw.indexOf('/') >= 0) return `${encoded}`;
-  return `images/${encoded}`;
+// 흔적 바에 표시할 상태 — 플레이어가 '쥔 것 / 되어버린 것'
+const TRACE_DEFS = [
+  { key: 'hasSword', label: '검' },
+  { key: 'hasRelic', label: '유물' },
+  { key: 'knowsTruth', label: '진실' },
+  { key: 'sawSecret', label: '비밀' },
+  { key: 'corrupted', label: '타락', danger: true },
+  { key: 'killedVillager', label: '피', danger: true },
+];
+
+// ─── 이미지 ──────────────────────────────────────────────
+
+// 노드의 이미지 경로 목록을 반환한다.
+// 시나리오의 이미지는 모두 "images/<이름>-<번호>.png" 상대경로로 통일돼 있어
+// 별도 변환 없이 그대로 사용한다.
+function getNodeImages(node) {
+  const raw = node?.images ?? node?.image ?? [];
+  const entries = Array.isArray(raw) ? raw : [raw];
+  return entries.filter((e) => typeof e === 'string' && e.trim());
 }
 
-function getNodeImages(node, nodeKey) {
-  if (!node && !scenario) return [];
-  let raw = node?.images ?? node?.image ?? scenario?.images ?? [];
-  if (!raw) raw = [];
-  const entries = Array.isArray(raw) ? raw.slice() : [raw];
-  const images = entries.map((e) => {
-    if (e == null) return null;
-    // numeric shorthand -> images/<nodeKey>-<n>.png
-    if (/^\d+$/.test(String(e))) {
-      const key = nodeKey || (scenario?.start) || 'scene';
-      return `images/${encodeURIComponent(key)}-${String(e)}.png`;
-    }
-    return resolveImagePath(e);
-  }).filter(Boolean);
-  // fallback to scenario.imageCount producing nodeKey-<n>.png
-  if (images.length === 0 && scenario?.imageCount && nodeKey) {
-    for (let i = 1; i <= scenario.imageCount; i++) images.push(`images/${encodeURIComponent(nodeKey)}-${i}.png`);
-  }
-  return images;
-}
-
+// 이미지 캐러셀: index 위치부터 보여주되, 로드에 실패하면 다음 이미지로 넘어간다.
 function showSceneImage(index) {
-  if (!currentSceneImages || currentSceneImages.length === 0) return;
   const count = currentSceneImages.length;
-  const startIdx = ((index % count) + count) % count;
-  // Try each image in the list (wrapping) until one loads successfully.
+  if (count === 0) return;
   let attempts = 0;
-  function tryFrom(offset) {
-    if (attempts >= count) return; // none worked
-    const idx = (startIdx + offset) % count;
-    const initialUrl = currentSceneImages[idx];
-    attempts++;
-    // Try initialUrl with svg/png fallback
-    const candidates = [initialUrl];
-    try {
-      const u = new URL(initialUrl, location.href).toString();
-      if (/\.svg$/i.test(u)) candidates.push(u.replace(/\.svg$/i, '.png'));
-      if (/\.png$/i.test(u)) candidates.push(u.replace(/\.png$/i, '.svg'));
-    } catch (e) { /* ignore */ }
 
-    let ci = 0;
-    function tryCandidate() {
-      if (ci >= candidates.length) return tryFrom(offset + 1);
-      const img = new Image();
-      img.onload = function() {
-        currentSceneImageIndex = idx;
-        if (dom.sceneImage) {
-          dom.sceneImage.style.backgroundImage = `url('${candidates[ci]}')`;
-          dom.sceneImage.style.visibility = 'visible';
-        }
-        if (dom.sceneIcon) dom.sceneIcon.style.display = 'none';
-        if (dom.sceneImageControls) dom.sceneImageControls.classList.remove('hidden');
-        if (dom.sceneImageCounter) dom.sceneImageCounter.textContent = `${currentSceneImageIndex+1} / ${count}`;
-      };
-      img.onerror = function() { ci++; tryCandidate(); };
-      img.src = candidates[ci];
-    }
-    tryCandidate();
+  function tryShow(i) {
+    if (attempts >= count) return; // 전부 실패하면 프레임을 접는다
+    attempts++;
+    const idx = ((i % count) + count) % count;
+    const url = currentSceneImages[idx];
+    const img = new Image();
+    img.onload = () => {
+      currentSceneImageIndex = idx;
+      dom.sceneArea.classList.remove('is-empty');
+      dom.sceneImage.style.backgroundImage = `url('${url}')`;
+      dom.sceneImage.classList.add('has-image');
+      // 캐러셀 컨트롤은 그림이 2장 이상일 때만
+      if (count > 1) {
+        dom.sceneControls.classList.remove('hidden');
+        dom.sceneCounter.textContent = `${idx + 1} / ${count}`;
+      } else {
+        dom.sceneControls.classList.add('hidden');
+      }
+    };
+    img.onerror = () => {
+      if (attempts >= count) dom.sceneArea.classList.add('is-empty');
+      tryShow(idx + 1);
+    };
+    img.src = url;
   }
-  tryFrom(0);
+
+  tryShow(index);
 }
 
 function updateScene() {
-  if (!gameState || !scenario) return;
-  if (dom.sceneImage) {
-    dom.sceneImage.className = 'scene-image';
-    dom.sceneImage.style.backgroundImage = '';
-  }
-  if (dom.sceneIcon) dom.sceneIcon.style.display = 'block';
-  if (dom.sceneImageControls) dom.sceneImageControls.classList.add('hidden');
-  currentSceneImages = [];
-  currentSceneImageIndex = 0;
   const node = scenario.nodes[gameState.current_node];
-  // show external back-to-title button only for ending nodes
-  try {
-    if (dom.storyExternalControls) {
-      if (node?.ending) dom.storyExternalControls.style.display = 'block';
-      else dom.storyExternalControls.style.display = 'none';
-    }
-  } catch (e) { /* ignore */ }
-  // ending overlay removed; treat ending nodes as normal scenes
+  currentSceneImages = getNodeImages(node);
+  currentSceneImageIndex = 0;
 
-  currentSceneImages = getNodeImages(node, gameState.current_node);
+  dom.sceneImage.classList.remove('has-image');
+  dom.sceneImage.style.backgroundImage = '';
+  dom.sceneControls.classList.add('hidden');
+
   if (currentSceneImages.length > 0) {
-    showSceneImage(0);
+    showSceneImage(0); // 성공 시 is-empty 해제
+  } else {
+    dom.sceneArea.classList.add('is-empty'); // 텍스트 중심 노드
+  }
+}
+
+// ─── 흔적 바 ─────────────────────────────────────────────
+
+function renderTrace() {
+  const active = TRACE_DEFS.filter((d) => gameState[d.key]);
+  dom.trace.innerHTML = '';
+  active.forEach((d) => {
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    if (d.danger) pill.classList.add('pill-danger');
+    if (!prevTrace.has(d.key)) pill.classList.add('pill-new'); // 새로 얻은 것만 등장 연출
+    pill.textContent = d.label;
+    dom.trace.appendChild(pill);
+  });
+  dom.trace.classList.toggle('is-empty', active.length === 0);
+  prevTrace = new Set(active.map((d) => d.key));
+}
+
+// ─── 스토리 / 선택지 ─────────────────────────────────────
+
+// 산문을 줄 단위로 나눠 한 줄씩 페이드인한다 (시네마틱 리딩).
+function renderStoryText(text) {
+  dom.storyText.innerHTML = '';
+  const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  lines.forEach((line, i) => {
+    const p = document.createElement('p');
+    p.className = 'line';
+    p.textContent = line;
+    p.style.animationDelay = `${0.09 * i}s`;
+    dom.storyText.appendChild(p);
+  });
+  return lines.length;
+}
+
+// conditions를 평가해 이 선택지를 지금 보여줄지 결정한다.
+function choiceVisible(choice) {
+  const cond = choice.conditions || choice.condition;
+  if (!cond) return true;
+  try {
+    for (const [k, v] of Object.entries(cond)) {
+      if (!matchCondition(gameState[k], v)) return false;
+    }
+  } catch (e) {
+    return false;
+  }
+  return true;
+}
+
+function renderChoices(choices, storyLineCount) {
+  dom.choices.innerHTML = '';
+  choiceMap = [];
+
+  const visible = [];
+  (choices || []).forEach((c, i) => {
+    if (choiceVisible(c)) visible.push({ choice: c, index: i });
+  });
+
+  // 선택지가 없으면(엔딩이거나 모든 길이 닫힘) 마무리 처리
+  if (visible.length === 0) {
+    renderEnding();
     return;
   }
+
+  const base = 0.09 * storyLineCount + 0.2; // 산문이 다 뜬 뒤 선택지가 떠오른다
+  visible.forEach((v, pos) => {
+    choiceMap[pos] = v.index;
+    const btn = document.createElement('button');
+    btn.className = 'choice';
+    btn.style.animationDelay = `${base + pos * 0.07}s`;
+
+    const key = document.createElement('span');
+    key.className = 'choice-key';
+    key.textContent = String(pos + 1);
+
+    const txt = document.createElement('span');
+    txt.className = 'choice-text';
+    txt.textContent = v.choice.text || v.choice;
+
+    btn.append(key, txt);
+    btn.addEventListener('click', () => makeChoice(v.index));
+    dom.choices.appendChild(btn);
+  });
+}
+
+function renderEnding() {
+  const node = scenario.nodes[gameState.current_node];
+  dom.choices.innerHTML = '';
+  choiceMap = [];
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ending';
+
+  const label = document.createElement('div');
+  label.className = 'ending-label';
+  label.textContent = node?.ending ? '끝' : '막다른 길';
+
+  const btn = document.createElement('button');
+  btn.className = 'choice choice-restart';
+  const txt = document.createElement('span');
+  txt.className = 'choice-text';
+  txt.textContent = '처음부터 다시';
+  btn.append(txt);
+  btn.addEventListener('click', restartGame);
+
+  wrap.append(label, btn);
+  dom.choices.appendChild(wrap);
 }
 
 function showStory(text, choices) {
-  if (dom.storyText) dom.storyText.textContent = text || '';
-  if (dom.choicesArea) {
-    dom.choicesArea.innerHTML = '';
-    const list = (choices || []).slice();
-    list.forEach((c, i) => {
-      // evaluate conditions; if not met, do not render this choice (hide)
-      const cond = c.conditions || c.condition || null;
-      let enabled = true;
-      try {
-        if (cond && gameState) {
-          for (const [k, v] of Object.entries(cond)) {
-            const stateVal = gameState[k];
-            if (typeof v === 'boolean') {
-              if (stateVal !== v) { enabled = false; break; }
-            } else if (typeof v === 'number') {
-              if (stateVal !== v) { enabled = false; break; }
-            } else {
-              if (String(stateVal) !== String(v)) { enabled = false; break; }
-            }
-          }
-        }
-      } catch (e) { enabled = false; }
+  const lineCount = renderStoryText(text);
+  renderChoices(choices, lineCount);
+}
 
-      if (!enabled) return; // skip rendering this choice
+// ─── 상태 변경 로직 (분기 엔진) ──────────────────────────
 
-      const btn = document.createElement('button');
-      btn.className = 'btn-choice';
-      btn.textContent = c.text || c;
-      // pass the actual choice object to avoid index mismatch when some choices are hidden
-      btn.addEventListener('click', () => makeChoice(c));
-      dom.choicesArea.appendChild(btn);
-    });
+// 선택지/노드의 effects를 gameState에 반영한다.
+// 값이 "+1"/"-2" 같은 문자열이면 누적, 그 외(true/false/숫자/문자열)는 대입.
+function applyEffects(effects) {
+  if (!effects) return;
+  for (const [key, value] of Object.entries(effects)) {
+    if (typeof value === 'string') {
+      const delta = value.match(/^\s*([+-])\s*(\d+)\s*$/);
+      if (delta) {
+        const current = Number(gameState[key]) || 0;
+        gameState[key] = current + (delta[1] === '-' ? -1 : 1) * Number(delta[2]);
+        continue;
+      }
+    }
+    gameState[key] = value;
   }
 }
 
+// 선택지 conditions 한 항목을 평가한다.
+// ">=2" 같은 비교 문자열을 지원하고, 그 외는 동등 비교.
+function matchCondition(stateVal, expected) {
+  if (typeof expected === 'string') {
+    const cmp = expected.match(/^\s*(>=|<=|>|<|==|!=)\s*(-?\d+)\s*$/);
+    if (cmp) {
+      const current = Number(stateVal) || 0;
+      const target = Number(cmp[2]);
+      switch (cmp[1]) {
+        case '>=': return current >= target;
+        case '<=': return current <= target;
+        case '>': return current > target;
+        case '<': return current < target;
+        case '==': return current === target;
+        case '!=': return current !== target;
+      }
+    }
+  }
+  if (typeof expected === 'boolean') return Boolean(stateVal) === expected;
+  if (typeof expected === 'number') return Number(stateVal) === expected;
+  return String(stateVal) === String(expected);
+}
 
-// ending overlay functions removed
+// ─── 진행 ────────────────────────────────────────────────
+
+// 노드로 진입한다: 노드 effects 적용 → 흔적/화면/스토리 갱신.
+function enterNode(nodeKey) {
+  gameState.current_node = nodeKey;
+  const node = scenario.nodes[nodeKey];
+  applyEffects(node?.effects);
+  renderTrace();
+  updateScene();
+  showStory(node?.text, node?.choices || []);
+  // 다음 노드를 위해 위에서부터 읽도록 스크롤
+  const screen = document.getElementById('screen-game');
+  if (screen) screen.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
 function startGame() {
-  if (!scenario) return;
-  // 화면 전환: 타이틀 숨기고 게임 화면 표시
   const title = document.getElementById('screen-title');
   const gameScreen = document.getElementById('screen-game');
   if (title) title.classList.remove('active');
-  if (gameScreen) {
-    gameScreen.classList.add('active');
-    gameScreen.style.visibility = 'visible';
-  }
+  if (gameScreen) gameScreen.classList.add('active');
 
-  gameState = { ...scenario.initial_state, current_node: scenario.start };
-  // hide external back-to-title when starting the game
-  try { if (dom.storyExternalControls) dom.storyExternalControls.style.display = 'none'; } catch(e){}
-  updateScene();
-  const node = scenario.nodes[gameState.current_node];
-  showStory(node.text, node.choices || []);
+  gameState = { ...scenario.initial_state };
+  prevTrace = new Set();
+  enterNode(scenario.start);
 }
 
 function makeChoice(index) {
   const node = scenario.nodes[gameState.current_node];
-  let choice;
-  if (typeof index === 'object' && index !== null) {
-    choice = index;
-  } else {
-    choice = (node.choices || [])[index];
-  }
+  const choice = (node.choices || [])[index];
   if (!choice) return;
-  // apply choice effects (if any)
-  try {
-    const eff = choice.effects || choice.effect || null;
-    if (eff && typeof eff === 'object') {
-      for (const [k, v] of Object.entries(eff)) {
-        const cur = gameState[k];
-        if (typeof v === 'string' && (/^[+-]?\d+$/.test(v) || /^[+-]\d+$/.test(v))) {
-          // relative numeric change like "+1" or "-1"
-          const delta = parseInt(v, 10);
-          gameState[k] = (typeof cur === 'number' ? cur : 0) + delta;
-        } else if (typeof v === 'string' && v.startsWith('+') && !isNaN(Number(v.slice(1)))) {
-          const delta = Number(v.slice(1));
-          gameState[k] = (typeof cur === 'number' ? cur : 0) + delta;
-        } else {
-          // assign value directly (boolean, number, string)
-          gameState[k] = v;
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('[makeChoice] applying effects failed', e);
-  }
-
-  gameState.current_node = choice.next;
-  updateScene();
-  const next = scenario.nodes[gameState.current_node];
-  // apply node entry effects (if any)
-  try {
-    const ne = next?.effects || next?.effect || null;
-    if (ne && typeof ne === 'object') {
-      for (const [k, v] of Object.entries(ne)) {
-        const cur = gameState[k];
-        if (typeof v === 'string' && (/^[+-]?\d+$/.test(v) || /^[+-]\d+$/.test(v))) {
-          const delta = parseInt(v, 10);
-          gameState[k] = (typeof cur === 'number' ? cur : 0) + delta;
-        } else if (typeof v === 'string' && v.startsWith('+') && !isNaN(Number(v.slice(1)))) {
-          const delta = Number(v.slice(1));
-          gameState[k] = (typeof cur === 'number' ? cur : 0) + delta;
-        } else {
-          gameState[k] = v;
-        }
-      }
-    }
-  } catch (e) { console.warn('[makeChoice] applying node effects failed', e); }
-  showStory(next.text, next.choices || []);
+  applyEffects(choice.effects); // 선택의 결과(검 획득 등)를 상태에 반영
+  enterNode(choice.next);
 }
 
-function backToTitle() {
-  const title = document.getElementById('screen-title');
-  const gameScreen = document.getElementById('screen-game');
-  if (gameScreen) gameScreen.classList.remove('active');
-  if (title) title.classList.add('active');
-  try { if (dom.storyExternalControls) dom.storyExternalControls.style.display = 'none'; } catch(e){}
+function restartGame() {
+  gameState = { ...scenario.initial_state };
+  prevTrace = new Set();
+  enterNode(scenario.start);
 }
 
 window.startGame = startGame;
 window.makeChoice = makeChoice;
-window.backToTitle = backToTitle;
+window.restartGame = restartGame;
+
+// ─── 키보드 ──────────────────────────────────────────────
+
+function onKeydown(e) {
+  const titleActive = document.getElementById('screen-title')?.classList.contains('active');
+  const gameActive = document.getElementById('screen-game')?.classList.contains('active');
+  if (titleActive && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    startGame();
+    return;
+  }
+  if (gameActive) {
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= choiceMap.length) makeChoice(choiceMap[n - 1]);
+  }
+}
+
+// ─── 초기화 ──────────────────────────────────────────────
 
 async function init() {
-  if (location.protocol === 'file:') {
-    // try to use scenario_v3.json via fetch may fail; fallback to INLINE
-    try {
-      const res = await fetch('./scenario_v3.json', {cache: 'no-store'});
-      if (res.ok) {
-        scenario = await res.json();
-      } else {
-        throw new Error('fetch failed');
-      }
-    } catch (e) {
-      console.warn('[init] fetch failed, using embedded minimal scenario', e);
-      scenario = {
-        meta: { title: '아에르돈의 계약' },
-        imageFolder: DEFAULT_IMAGE_BASE_PATH,
-        imageCount: 3,
-        initial_state: {},
-        start: 'start',
-        nodes: { start: { text: '시작 장면', images: [1], choices: [] } }
-      };
-    }
-  } else {
-    try {
-      const res = await fetch('./scenario_v3.json', {cache: 'no-store'});
-      scenario = res.ok ? await res.json() : null;
-    } catch (e) {
-      console.warn('[init] fetch error, using inline fallback', e);
-      scenario = null;
-    }
-    if (!scenario) scenario = {
+  try {
+    const res = await fetch('./scenario_v3.json', { cache: 'no-store' });
+    scenario = res.ok ? await res.json() : null;
+  } catch (e) {
+    console.warn('[init] scenario_v3.json 로드 실패, 폴백 사용', e);
+    scenario = null;
+  }
+  if (!scenario) {
+    scenario = {
       meta: { title: '아에르돈의 계약' },
-      imageFolder: DEFAULT_IMAGE_BASE_PATH,
-      imageCount: 3,
       initial_state: {},
       start: 'start',
-      nodes: { start: { text: '시작 장면', images: [1], choices: [] } }
+      nodes: { start: { text: '시작 장면을 불러오지 못했습니다.', images: [], choices: [] } },
     };
   }
 
-  if (!scenario.imageFolder) scenario.imageFolder = DEFAULT_IMAGE_BASE_PATH;
+  dom.scenePrev?.addEventListener('click', (e) => { e.stopPropagation(); showSceneImage(currentSceneImageIndex - 1); });
+  dom.sceneNext?.addEventListener('click', (e) => { e.stopPropagation(); showSceneImage(currentSceneImageIndex + 1); });
+  document.addEventListener('keydown', onKeydown);
 
-  if (dom.sceneImagePrev) dom.sceneImagePrev.addEventListener('click', (e)=>{ e.stopPropagation(); showSceneImage(currentSceneImageIndex-1); });
-  if (dom.sceneImageNext) dom.sceneImageNext.addEventListener('click', (e)=>{ e.stopPropagation(); showSceneImage(currentSceneImageIndex+1); });
-
-  console.log('[init] scenario loaded', scenario && scenario.meta && scenario.meta.title);
-  // Ensure title screen is shown and do NOT auto-start the game.
-  const title = document.getElementById('screen-title');
-  const gameScreen = document.getElementById('screen-game');
-  if (title) title.classList.add('active');
-  if (gameScreen) gameScreen.classList.remove('active');
-
-  // Remove any leftover debug overlay element if present
-  try {
-    const dbg = document.getElementById('debug-scene-overlay');
-    if (dbg && dbg.parentNode) dbg.parentNode.removeChild(dbg);
-  } catch (e) { /* ignore */ }
-
-  // Ensure scene image does not capture pointer events (buttons must remain clickable)
-  try { if (dom.sceneImage) dom.sceneImage.style.pointerEvents = 'none'; } catch (e) {}
+  // 타이틀 화면 표시, 게임은 자동 시작하지 않는다.
+  document.getElementById('screen-title')?.classList.add('active');
+  document.getElementById('screen-game')?.classList.remove('active');
 }
 
 init();

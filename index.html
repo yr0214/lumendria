@@ -5,193 +5,53 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>아에르돈의 계약 — 저주를 끊을 자</title>
     <link rel="stylesheet" href="./style.css">
-    <script>
-        console.log("[페이지로드] HTML 파일이 로드되었습니다");
-    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- 파티클 배경 -->
-    <canvas id="particles"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
 
     <!-- 타이틀 화면 -->
     <div id="screen-title" class="screen active">
-        <div class="title-container">
-            <div class="title-glow"></div>
-            <h1 class="game-title">
-                <span class="title-sub">저주를 끊을 자</span>
-                아에르돈의 계약
-            </h1>
-            <p class="title-desc">저주가 나라를 삼키기 전에, 리아나의 모험이 시작된다.</p>
-            <button class="btn-primary btn-start" onclick="startGame()">
-                <span class="btn-icon">&#9733;</span>
-                모험 시작하기
-            </button>
-            <button class="btn-secondary btn-continue" id="btn-continue" style="display:none" onclick="continueGame()">
-                이어하기
-            </button>
+        <div class="title-wrap">
+            <div class="kicker">INTERACTIVE FICTION</div>
+            <h1 class="title">아에르돈의 계약</h1>
+            <div class="title-sub">저주를 끊을 자</div>
+            <p class="title-desc">동생은 3년 전 이 왕국에서 죽었다.<br>복수인지 진실인지, 당신조차 아직 모른다.</p>
+            <button class="btn-cta" onclick="startGame()">여정을 시작한다</button>
+            <p class="title-hint">선택은 마우스 또는 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> 키로</p>
         </div>
     </div>
-
-        <!-- 오른쪽 외부: 타이틀로 돌아가기 버튼 -->
-        <div class="story-external-controls" id="story-external-controls" style="display:none">
-            <button class="btn-primary btn-back-title" id="btn-back-to-title" onclick="backToTitle()">타이틀로</button>
-        </div>
 
     <!-- 게임 화면 -->
     <div id="screen-game" class="screen">
-        <!-- 상태바 -->
-        <div class="status-bar" style="display:none">
-            <div class="status-left">
-                <div class="status-item hp">
-                    <span class="status-label">HP</span>
-                    <div class="bar-container">
-                        <div class="bar bar-hp" id="bar-hp">
-                            <span class="bar-text" id="text-hp">100 / 100</span>
-                        </div>
+        <div class="stage">
+            <!-- 흔적: 획득한 상태 -->
+            <header class="trace is-empty" id="trace" aria-label="지금까지의 흔적"></header>
+
+            <!-- 장면 이미지 (없는 노드에서는 접힘) -->
+            <section class="scene is-empty" id="scene-area">
+                <div class="scene-frame" id="scene-image">
+                    <div class="scene-vignette" aria-hidden="true"></div>
+                    <div class="scene-controls hidden" id="scene-image-controls">
+                        <button class="scene-nav" id="scene-image-prev" type="button" aria-label="이전 그림">&#8249;</button>
+                        <span class="scene-counter" id="scene-image-counter"></span>
+                        <button class="scene-nav" id="scene-image-next" type="button" aria-label="다음 그림">&#8250;</button>
                     </div>
                 </div>
-                <div class="status-item mp">
-                    <span class="status-label">MP</span>
-                    <div class="bar-container">
-                        <div class="bar bar-mp" id="bar-mp">
-                            <span class="bar-text" id="text-mp">50 / 50</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="status-right">
-                <div class="chapter-badge" id="chapter-badge">Ch.1</div>
-                <div class="route-badge" id="route-badge">균형의 길</div>
-                <button class="btn-icon-only btn-items" id="btn-items" onclick="toggleItemPanel()" title="아이템">
-                    <span>&#127873;</span>
-                    <span class="item-count" id="item-count">1</span>
-                </button>
-            </div>
-        </div>
+            </section>
 
-        <!-- 보스 HP (보스전에서만 표시) -->
-        <div class="boss-status" id="boss-status" style="display:none">
-            <div class="boss-name" id="boss-name">보스</div>
-            <div class="bar-container bar-boss-container">
-                <div class="bar bar-boss" id="bar-boss">
-                    <span class="bar-text" id="text-boss-hp">80 / 80</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- 아이템 패널 -->
-        <div class="item-panel" id="item-panel" style="display:none">
-            <div class="item-panel-header">
-                <h3>보유 아이템</h3>
-                <button class="btn-close" onclick="toggleItemPanel()">&times;</button>
-            </div>
-            <div class="item-list" id="item-list"></div>
-        </div>
-
-        <!-- 씬 이미지 영역 -->
-        <div class="scene-area" id="scene-area">
-            <div class="scene-image" id="scene-image">
-                <div class="scene-overlay"></div>
-                <div class="scene-icon" id="scene-icon">&#9876;</div>
-                <div class="scene-image-controls hidden" id="scene-image-controls">
-                    <button class="scene-image-btn prev" id="scene-image-prev" type="button">&#10094;</button>
-                    <div class="scene-image-counter" id="scene-image-counter"></div>
-                    <button class="scene-image-btn next" id="scene-image-next" type="button">&#10095;</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 스토리 영역 -->
-        <div class="story-area">
-            <div class="story-box" id="story-box">
+            <!-- 스토리 -->
+            <section class="story">
                 <div class="story-text" id="story-text"></div>
-                <div class="typing-indicator" id="typing-indicator" style="display:none">
-                    <span></span><span></span><span></span>
-                </div>
-            </div>
-        </div>
+            </section>
 
-        <!-- 데미지 표시 -->
-        <div class="damage-display" id="damage-display" style="display:none">
-            <div class="damage-player" id="damage-player"></div>
-            <div class="damage-boss" id="damage-boss"></div>
-        </div>
-
-        <!-- 선택지 영역 -->
-        <div class="choices-area" id="choices-area">
-            <!-- 동적으로 생성 -->
-        </div>
-
-        <!-- 보스전 액션 버튼 -->
-        <div class="boss-actions" id="boss-actions" style="display:none">
-            <button class="btn-action btn-attack" onclick="bossAction('공격')">
-                <span class="action-icon">&#9876;</span>
-                공격
-            </button>
-            <button class="btn-action btn-defend" onclick="bossAction('방어')">
-                <span class="action-icon">&#128737;</span>
-                방어
-            </button>
-            <button class="btn-action btn-magic" onclick="bossAction('마법')">
-                <span class="action-icon">&#10024;</span>
-                마법
-            </button>
-            <button class="btn-action btn-item" id="btn-boss-item" onclick="openBossItemSelect()">
-                <span class="action-icon">&#127873;</span>
-                아이템
-            </button>
-        </div>
-
-        <!-- 보스전 아이템 선택 -->
-        <div class="boss-item-select" id="boss-item-select" style="display:none">
-            <div class="boss-item-header">
-                <h3>아이템 사용</h3>
-                <button class="btn-close" onclick="closeBossItemSelect()">&times;</button>
-            </div>
-            <div class="boss-item-list" id="boss-item-list"></div>
+            <!-- 선택지 -->
+            <nav class="choices" id="choices-area" aria-label="선택지"></nav>
         </div>
     </div>
 
-    <!-- 게임오버 오버레이 -->
-    <div class="overlay" id="overlay-gameover" style="display:none">
-        <div class="overlay-content gameover-content">
-            <h2>리아나가 쓰러졌다...</h2>
-            <p class="overlay-text" id="gameover-text">하지만 포기하지 않아!</p>
-            <button class="btn-primary" onclick="retryBoss()">다시 도전하기</button>
-        </div>
-    </div>
-
-    <!-- 보스 클리어 오버레이 -->
-    <div class="overlay" id="overlay-boss-clear" style="display:none">
-        <div class="overlay-content clear-content">
-            <h2 id="boss-clear-title">승리!</h2>
-            <p class="overlay-text" id="boss-clear-text"></p>
-            <button class="btn-primary" id="btn-next-chapter" onclick="nextChapter()">다음 챕터로</button>
-        </div>
-    </div>
-
-    <!-- 엔딩 오버레이 제거됨 -->
-
-    <!-- 로딩 오버레이 -->
-    <div class="overlay overlay-loading" id="overlay-loading" style="display:none">
-        <div class="loading-spinner">
-            <div class="spinner-ring"></div>
-            <p>리아나의 이야기를 만드는 중...</p>
-        </div>
-    </div>
-
-    <script>
-        // EMBEDDED_IMAGES: 페이지에 이미지를 직접 임베드하려면
-        // 아래 객체에 키: dataURI 형식으로 추가하세요.
-        // 예: window.EMBEDDED_IMAGES = { "start-1": "data:image/png;base64,iVBORw0..." }
-        window.EMBEDDED_IMAGES = window.EMBEDDED_IMAGES || {};
-    </script>
     <script src="./game.js"></script>
-    <script>
-        init();
-    </script>
 </body>
 </html>
