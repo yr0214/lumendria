@@ -19,7 +19,11 @@
             <h1 class="title">아에르돈의 계약</h1>
             <div class="title-sub">저주를 끊을 자</div>
             <p class="title-desc">동생은 3년 전 이 왕국에서 죽었다.<br>복수인지 진실인지, 당신조차 아직 모른다.</p>
-            <button class="btn-cta" onclick="startGame()">여정을 시작한다</button>
+            <div class="title-actions">
+                <button class="btn-cta" onclick="startGame()">여정을 시작한다</button>
+                <button class="btn-secondary" id="ending-collection-open" type="button">엔딩 도감</button>
+                <button class="btn-ultimate hidden" id="ultimate-ending-btn" onclick="startUltimateEnding()" type="button">진정한 엔딩</button>
+            </div>
             <p class="title-hint">선택은 마우스 또는 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> 키로</p>
         </div>
     </div>
@@ -49,6 +53,21 @@
 
             <!-- 선택지 -->
             <nav class="choices" id="choices-area" aria-label="선택지"></nav>
+        </div>
+    </div>
+
+    <div class="collection-overlay hidden" id="ending-collection-overlay" aria-hidden="true">
+        <div class="collection-panel" role="dialog" aria-modal="true" aria-label="엔딩 도감">
+            <div class="collection-header">
+                <div>
+                    <p class="collection-kicker">COLLECTION</p>
+                    <h2>엔딩 도감</h2>
+                </div>
+                <button class="collection-close" id="ending-collection-close" type="button" aria-label="닫기">×</button>
+            </div>
+            <div class="collection-stats" id="ending-collection-stats"></div>
+            <div class="collection-grid" id="ending-collection-grid"></div>
+            <button class="collection-reset" id="ending-collection-reset" type="button">도감 초기화</button>
         </div>
     </div>
 

@@ -17,6 +17,12 @@ const dom = {
   storyText: $('#story-text'),
   choices: $('#choices-area'),
   trace: $('#trace'),
+  collectionOpen: $('#ending-collection-open'),
+  collectionOverlay: $('#ending-collection-overlay'),
+  collectionClose: $('#ending-collection-close'),
+  collectionGrid: $('#ending-collection-grid'),
+  collectionStats: $('#ending-collection-stats'),
+  collectionReset: $('#ending-collection-reset'),
 };
 
 let scenario = null;
@@ -25,6 +31,8 @@ let currentSceneImages = [];
 let currentSceneImageIndex = 0;
 let choiceMap = []; // 화면에 보이는 선택지 위치(0..n) → 원본 choices 인덱스 (숫자키 매핑용)
 let prevTrace = new Set();
+let unlockedEndings = [];
+const ENDING_COLLECTION_KEY = 'lumendria-unlocked-endings';
 
 // 흔적 바에 표시할 상태 — 플레이어가 '쥔 것 / 되어버린 것'
 const TRACE_DEFS = [
@@ -64,13 +72,9 @@ function showSceneImage(index) {
       dom.sceneArea.classList.remove('is-empty');
       dom.sceneImage.style.backgroundImage = `url('${url}')`;
       dom.sceneImage.classList.add('has-image');
-      // 캐러셀 컨트롤은 그림이 2장 이상일 때만
-      if (count > 1) {
-        dom.sceneControls.classList.remove('hidden');
-        dom.sceneCounter.textContent = `${idx + 1} / ${count}`;
-      } else {
-        dom.sceneControls.classList.add('hidden');
-      }
+      dom.sceneImage.style.cursor = count > 1 ? 'pointer' : 'default';
+      dom.sceneControls.classList.add('hidden');
+      dom.sceneCounter.textContent = '';
     };
     img.onerror = () => {
       if (attempts >= count) dom.sceneArea.classList.add('is-empty');
@@ -89,13 +93,163 @@ function updateScene() {
 
   dom.sceneImage.classList.remove('has-image');
   dom.sceneImage.style.backgroundImage = '';
+  dom.sceneImage.style.cursor = 'default';
   dom.sceneControls.classList.add('hidden');
+  dom.sceneCounter.textContent = '';
 
   if (currentSceneImages.length > 0) {
     showSceneImage(0); // 성공 시 is-empty 해제
   } else {
     dom.sceneArea.classList.add('is-empty'); // 텍스트 중심 노드
   }
+}
+
+// 도감이 완성되었는지 확인 (모든 일반 엔딩 9개 해금)
+function isCollectionComplete() {
+  return unlockedEndings.length >= 9;
+}
+
+// 타이틀 화면의 "진정한 엔딩" 버튼을 업데이트한다
+function updateUltimateEndingButton() {
+  const btn = document.getElementById('ultimate-ending-btn');
+  if (!btn) return;
+  if (isCollectionComplete()) {
+    btn.classList.remove('hidden');
+    btn.disabled = false;
+  } else {
+    btn.classList.add('hidden');
+    btn.disabled = true;
+  }
+}
+
+// 진정한 엔딩 시작
+function startUltimateEnding() {
+  const title = document.getElementById('screen-title');
+  const gameScreen = document.getElementById('screen-game');
+  if (title) title.classList.remove('active');
+  if (gameScreen) {
+    gameScreen.classList.add('active');
+    gameScreen.classList.remove('ending-mode');
+  }
+
+  gameState = { ...scenario.initial_state };
+  prevTrace = new Set();
+  enterNode('ultimate_ending');
+}
+
+window.startUltimateEnding = startUltimateEnding;
+
+function loadUnlockedEndings() {
+  try {
+    const raw = localStorage.getItem(ENDING_COLLECTION_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((e) => typeof e === 'string' && e.trim()) : [];
+  } catch (e) {
+    console.warn('[collection] 저장된 엔딩 정보를 불러오지 못했습니다.', e);
+    return [];
+  }
+}
+
+function saveUnlockedEndings() {
+  try {
+    localStorage.setItem(ENDING_COLLECTION_KEY, JSON.stringify(unlockedEndings));
+  } catch (e) {
+    console.warn('[collection] 엔딩 정보를 저장하지 못했습니다.', e);
+  }
+}
+
+function resetEndingCollection() {
+  const confirmed = window.confirm('진짜 초기화하시겠습니까?\n엔딩 도감 수집 기록이 모두 삭제됩니다.');
+  if (!confirmed) return;
+
+  unlockedEndings = [];
+  saveUnlockedEndings();
+  renderEndingCollection();
+  updateUltimateEndingButton();
+}
+
+function unlockEnding(nodeKey) {
+  if (!nodeKey || !scenario?.nodes?.[nodeKey]?.ending) return;
+  if (!unlockedEndings.includes(nodeKey)) {
+    unlockedEndings.push(nodeKey);
+    saveUnlockedEndings();
+  }
+  renderEndingCollection();
+}
+
+function getEndingCollectionEntries() {
+  if (!scenario?.nodes) return [];
+  const entries = Object.entries(scenario.nodes)
+    .filter(([, node]) => Boolean(node?.ending))
+    .map(([key, node]) => ({
+      key,
+      title: node?.title || node?.label || key.replace(/_/g, ' '),
+      image: Array.isArray(node?.images) ? node.images[0] : '',
+      text: node?.text || '',
+      unlocked: unlockedEndings.includes(key),
+    }));
+
+  const baseEntries = entries.filter((entry) => entry.key !== 'ultimate_ending');
+  if (isCollectionComplete()) {
+    return [...baseEntries, entries.find((entry) => entry.key === 'ultimate_ending')].filter(Boolean);
+  }
+  return baseEntries;
+}
+
+function renderEndingCollection() {
+  if (!dom.collectionGrid || !dom.collectionStats) return;
+  const entries = getEndingCollectionEntries();
+  dom.collectionStats.textContent = `해금됨 ${entries.filter((entry) => entry.unlocked).length} / ${entries.length}`;
+  dom.collectionGrid.innerHTML = '';
+
+  if (entries.length === 0) {
+    dom.collectionGrid.innerHTML = '<div class="collection-empty">모든 엔딩을 해금하면 도감의 자리가 열립니다.</div>';
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const card = document.createElement('div');
+    card.className = `ending-card${entry.unlocked ? ' is-unlocked' : ' is-locked'}`;
+
+    const preview = document.createElement('div');
+    preview.className = 'ending-card__preview';
+    if (entry.unlocked && entry.image) {
+      preview.style.backgroundImage = `url('${entry.image}')`;
+    }
+    preview.innerHTML = entry.unlocked ? '' : '<span>???</span>';
+
+    const title = document.createElement('div');
+    title.className = 'ending-card__title';
+    title.textContent = entry.unlocked ? entry.title : '???';
+
+    const desc = document.createElement('div');
+    desc.className = 'ending-card__desc';
+    desc.textContent = entry.unlocked ? '해금된 엔딩' : '아직 해금되지 않았습니다.';
+
+    card.append(preview, title, desc);
+    dom.collectionGrid.appendChild(card);
+  });
+}
+
+function openEndingCollection() {
+  renderEndingCollection();
+  dom.collectionOverlay?.classList.remove('hidden');
+  dom.collectionOverlay?.setAttribute('aria-hidden', 'false');
+}
+
+function closeEndingCollection() {
+  dom.collectionOverlay?.classList.add('hidden');
+  dom.collectionOverlay?.setAttribute('aria-hidden', 'true');
+}
+
+function handleSceneImageClick(event) {
+  if (currentSceneImages.length <= 1) return;
+
+  const rect = dom.sceneImage.getBoundingClientRect();
+  const clickX = event.clientX - rect.left;
+  const isLeftSide = clickX < rect.width / 2;
+  showSceneImage(currentSceneImageIndex + (isLeftSide ? -1 : 1));
 }
 
 // ─── 흔적 바 ─────────────────────────────────────────────
@@ -156,6 +310,12 @@ function renderChoices(choices, storyLineCount) {
 
   // 선택지가 없으면(엔딩이거나 모든 길이 닫힘) 마무리 처리
   if (visible.length === 0) {
+    const node = scenario.nodes[gameState.current_node];
+    // 엔딩이 아니지만 node.next가 있으면 자동 진행
+    if (!node?.ending && node?.next) {
+      setTimeout(() => enterNode(node.next), 800);
+      return;
+    }
     renderEnding();
     return;
   }
@@ -268,6 +428,9 @@ function enterNode(nodeKey) {
   if (!node?.ending) {
     document.getElementById('screen-game')?.classList.remove('ending-mode');
   }
+  if (node?.ending) {
+    unlockEnding(nodeKey);
+  }
   applyEffects(node?.effects);
   renderTrace();
   updateScene();
@@ -300,9 +463,18 @@ function makeChoice(index) {
 }
 
 function restartGame() {
-  gameState = { ...scenario.initial_state };
+  const title = document.getElementById('screen-title');
+  const gameScreen = document.getElementById('screen-game');
+  if (title) title.classList.add('active');
+  if (gameScreen) {
+    gameScreen.classList.remove('active');
+    gameScreen.classList.remove('ending-mode');
+  }
+  gameState = null;
   prevTrace = new Set();
-  enterNode(scenario.start);
+  unlockedEndings = loadUnlockedEndings();
+  renderEndingCollection();
+  updateUltimateEndingButton();
 }
 
 window.startGame = startGame;
@@ -344,9 +516,18 @@ async function init() {
     };
   }
 
-  dom.scenePrev?.addEventListener('click', (e) => { e.stopPropagation(); showSceneImage(currentSceneImageIndex - 1); });
-  dom.sceneNext?.addEventListener('click', (e) => { e.stopPropagation(); showSceneImage(currentSceneImageIndex + 1); });
+  dom.sceneImage?.addEventListener('click', handleSceneImageClick);
+  dom.collectionOpen?.addEventListener('click', openEndingCollection);
+  dom.collectionClose?.addEventListener('click', closeEndingCollection);
+  dom.collectionReset?.addEventListener('click', resetEndingCollection);
+  dom.collectionOverlay?.addEventListener('click', (event) => {
+    if (event.target === dom.collectionOverlay) closeEndingCollection();
+  });
   document.addEventListener('keydown', onKeydown);
+
+  unlockedEndings = loadUnlockedEndings();
+  renderEndingCollection();
+  updateUltimateEndingButton();
 
   // 타이틀 화면 표시, 게임은 자동 시작하지 않는다.
   document.getElementById('screen-title')?.classList.add('active');
